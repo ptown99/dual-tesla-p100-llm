@@ -11,3 +11,4 @@ for BDF in $(lspci -d ::0604 | awk '{print $1}'); do
 done
 
 echo "PCIe P2P unblocked! Check status with: nvidia-smi topo -p2p r"
+

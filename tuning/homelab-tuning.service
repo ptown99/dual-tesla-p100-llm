@@ -14,3 +14,4 @@ ExecStart=/bin/sh -c 'for dev in /sys/block/sd* /sys/block/nvme*; do [ -d "$dev"
 
 [Install]
 WantedBy=multi-user.target
+

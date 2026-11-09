@@ -28,3 +28,4 @@ if (Test-Path $cli) {
 }
 
 Write-Host "Setup Complete! 22+ models and remote MCP clusters active." -ForegroundColor Green
+

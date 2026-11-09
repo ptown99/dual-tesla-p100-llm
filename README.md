@@ -138,3 +138,4 @@ This repo includes a zero-manual-effort client distribution setup:
 
 * Distributed under the **MIT License**. See [LICENSE](LICENSE) for details.
 * See [CREDITS.md](CREDITS.md) for detailed acknowledgments of upstream work by Georgi Gerganov (`llama.cpp`), `shinbunbun`, and the open-source community.
+

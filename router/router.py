@@ -296,6 +296,22 @@ MODELS = {
         "port": 8002
     },
 
+    # 6b. Google Gemma 4 31B Dense Instruct - Dual P100 128k Context (17 t/s)
+    "gemma4-31b-it": {
+        "service": "llama-gemma4-31b.service",
+        "name": "Google Gemma 4 31B Dense Instruct (Dual P100 - 128k Context - 17 t/s)",
+        "description": "Google Gemma 4 31B Dense multimodal reasoning and deep coding model across dual P100s with 128k context and FlashAttention (17 tok/s)",
+        "categories": ["reasoning", "coding", "tutor"],
+        "tags": [
+            {"text": "17 t/s", "type": "speed"},
+            {"text": "128k", "type": "ctx"},
+            {"text": "Dense 31B", "type": "engine"},
+            {"text": "Multimodal", "type": "perf"}
+        ],
+        "aliases": ["mae-gemma4-31b-tutor", "gemma4-31b", "gemma4:31b", "gemma-31b", "gemma-4-31b", "gemma-4-31b-it", "gemma4-31b-native", "mae-gemma4-tutor"],
+        "port": 8002
+    },
+
     # 7. Microsoft Phi-4 Reasoning Plus 14B - Dual P100 128k Context (77 t/s)
     "phi4-reasoning-plus-native": {
         "service": "llama-phi4-reasoning-plus.service",
@@ -458,6 +474,20 @@ MODELS = {
         "port": 8002
     },
 
+    "gemma4-31b-it:fp16": {
+        "service": "llama-gemma4-31b-fp16.service",
+        "name": "Google Gemma 4 31B Dense Instruct [FP16 KV Precision] (Dual P100 - 64k Context)",
+        "description": "High-precision unquantized FP16 KV cache for Gemma 4 31B Dense Instruct (64k context)",
+        "categories": ["reasoning", "coding", "tutor"],
+        "tags": [
+            {"text": "FP16 KV", "type": "perf"},
+            {"text": "64k", "type": "ctx"},
+            {"text": "High Precision", "type": "engine"}
+        ],
+        "aliases": ["gemma4-31b:fp16", "gemma4:31b:fp16", "gemma-31b:fp16", "gemma4-31b-it-fp16", "gemma4-31b-fp16"],
+        "port": 8002
+    },
+
     "phi4-reasoning-plus-native:fp16": {
         "service": "llama-phi4-reasoning-fp16.service",
         "name": "Microsoft Phi-4 Reasoning+ 14B [FP16 KV Precision] (Dual P100 - 32k Context)",
@@ -551,6 +581,7 @@ DUAL_GPU_SERVICES = [
     "llama-qwen38-27b-fast.service",
     "llama-qwen3-30b-moe.service",
     "llama-gemma4-26b-moe.service",
+    "llama-gemma4-31b.service",
     "llama-qwen3-14b.service",
     "llama-phi4-reasoning-plus.service",
     "llama-server.service",
@@ -562,6 +593,7 @@ DUAL_GPU_SERVICES = [
     "llama-qwen38-27b-fp16.service",
     "llama-qwen3-30b-fp16.service",
     "llama-gemma4-26b-fp16.service",
+    "llama-gemma4-31b-fp16.service",
     "llama-qwen3-14b-fp16.service",
     "llama-phi4-reasoning-fp16.service",
     "llama-qwen3-8b-fp16.service",
@@ -685,18 +717,43 @@ def ensure_model_active(target_model_key: str) -> bool:
             except Exception as e:
                 log.warning(f"Error querying active units: {e}")
 
+        # Wait for conflicting services to actually become inactive
+        if target_port == 8002 and 'to_stop' in locals() and to_stop:
+            for s_name in to_stop:
+                for _ in range(30):
+                    chk = subprocess.run(["systemctl", "is-active", s_name], capture_output=True, text=True)
+                    if chk.stdout.strip() in ("inactive", "failed"):
+                        break
+                    time.sleep(0.2)
+
+        # Ensure target port is genuinely free and bindable
+        import socket
+        for _ in range(50):
+            try:
+                test_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                test_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                test_s.bind(('0.0.0.0', target_port))
+                test_s.close()
+                break
+            except OSError:
+                try:
+                    test_s.close()
+                except Exception:
+                    pass
+                time.sleep(0.2)
+
         subprocess.run(["sudo", "-n", "systemctl", "start", target_service], check=True)
 
         t_start = time.time()
         loaded = False
         max_wait = 360 if any(k in target_service for k in ["49b", "80b", "70b", "mixtral"]) else 180
         while time.time() - t_start < max_wait:
-            # Fast failure detection: abort if service crashed/failed
+            # Fast failure detection: abort if service explicitly failed
             try:
                 st = subprocess.run(["sudo", "-n", "systemctl", "is-active", target_service], capture_output=True, text=True, timeout=2)
-                if st.stdout.strip() in ["failed", "inactive"]:
+                if st.stdout.strip() == "failed":
                     if time.time() - t_start > 5:
-                        log.error(f"==> Service {target_service} entered {st.stdout.strip()} state! Aborting wait.")
+                        log.error(f"==> Service {target_service} entered failed state! Aborting wait.")
                         subprocess.run(["sudo", "-n", "systemctl", "stop", target_service], check=False)
                         break
             except Exception:
@@ -894,7 +951,7 @@ class ClusterRouterHandler(BaseHTTPRequestHandler):
                     "context": ctx
                 }
             }
-            if any(term in model_id.lower() or term in name.lower() for term in ["phi4", "r1", "35b", "nemotron"]):
+            if any(term in model_id.lower() or term in name.lower() for term in ["phi4", "r1", "35b", "nemotron", "gemma"]):
                 model_entry["variants"] = [
                     {"id": "low", "settings": {"reasoningEffort": "low"}},
                     {"id": "medium", "settings": {"reasoningEffort": "medium"}},
