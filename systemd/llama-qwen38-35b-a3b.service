@@ -17,6 +17,7 @@ ExecStart=/opt/pxa/pxa-v4.0.4/bin/llama-server \
   --model /opt/models/phase4/Qwen3.8-35B-A3B-Q4_K_M.gguf \
   --alias mae-qwen38-35b-moe \
   --host 0.0.0.0 --port 8002 \
+  --jinja \
   -sm layer \
   -ngl 999 \
   -fa on \
