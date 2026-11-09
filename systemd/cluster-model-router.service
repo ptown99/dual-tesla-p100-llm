@@ -1,0 +1,14 @@
+[Unit]
+Description=Cluster Model Router & Dynamic OpenCode Endpoint (Port 8001)
+After=network.target
+
+[Service]
+Type=simple
+User=mimi
+WorkingDirectory=/opt/cluster-router
+ExecStart=/usr/bin/python3 /opt/cluster-router/router.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

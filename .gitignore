@@ -1,0 +1,11 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary / build artifacts
+build/
+*.bin
+*.log
+.DS_Store
+Thumbs.db

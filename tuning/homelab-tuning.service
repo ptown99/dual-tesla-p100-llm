@@ -1,0 +1,16 @@
+[Unit]
+Description=Hardware Performance & GPU Persistence Tuning for Dual P100 Cluster
+After=network.target nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Enable GPU Persistence Mode on compute GPUs (index 0,1 or 1,2 depending on setup)
+ExecStart=/usr/bin/nvidia-smi -pm 1
+# Lock CPU cores to performance governor (eliminates latency spikes on prompt processing)
+ExecStart=/bin/sh -c 'for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > "$gov" 2>/dev/null || true; done'
+# Optimize storage read-ahead for fast GGUF weight loading (4MB read-ahead)
+ExecStart=/bin/sh -c 'for dev in /sys/block/sd* /sys/block/nvme*; do [ -d "$dev" ] && echo 8192 > "$dev/queue/read_ahead_kb" 2>/dev/null || true; done'
+
+[Install]
+WantedBy=multi-user.target

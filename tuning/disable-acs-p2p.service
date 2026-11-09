@@ -1,0 +1,13 @@
+[Unit]
+Description=Disable PCIe ACS Redirection on Tesla P100 Root Ports for P2P DMA
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=basic.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/disable-acs-p2p.sh
+
+[Install]
+WantedBy=basic.target

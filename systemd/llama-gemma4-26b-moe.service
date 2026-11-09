@@ -1,0 +1,30 @@
+[Unit]
+Description=Google Gemma 4 26B-A4B MoE (Dual P100 - Tensor Parallel - 128k Context Q4_0 KV - 73 t/s)
+After=network.target homelab-tuning.service disable-acs-p2p.service
+
+[Service]
+TimeoutStopSec=3s
+KillMode=mixed
+SendSIGKILL=yes
+Type=simple
+User=mimi
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1,2
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /opt/models/phase3/google_gemma-4-26B-A4B-it-Q4_K_M.gguf \
+  --alias mae-gemma4-moe-tutor \
+  --fit off \
+  --host 0.0.0.0 --port 8002 \
+  -sm tensor \
+  -ngl 999 \
+  -fa on \
+  -ctk q4_0 -ctv q4_0 \
+  -c 131072 \
+  -b 2048 -ub 512 -np 1 \
+  --threads 4 --threads-batch 6 \
+  --no-warmup
+Restart=no
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

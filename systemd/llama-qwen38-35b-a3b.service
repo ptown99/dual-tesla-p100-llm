@@ -1,0 +1,34 @@
+[Unit]
+Description=Qwen 3.8 35B-A3B Distill MoE (Dual P100 - Tensor Parallel - Multi-User Continuous Batching 128k)
+After=network.target homelab-tuning.service disable-acs-p2p.service
+
+[Service]
+TimeoutStopSec=3s
+KillMode=mixed
+SendSIGKILL=yes
+Type=simple
+User=mimi
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1,2
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  --model /opt/models/phase4/Qwen3.8-35B-A3B-Q4_K_M.gguf \
+  --alias mae-qwen38-35b-moe \
+  --fit off \
+  --host 0.0.0.0 --port 8002 \
+  -sm tensor \
+  -ngl 999 \
+  -fa on \
+  -c 262144 \
+  -ctk q4_0 -ctv q4_0 \
+  -b 2048 -ub 512 -np 2 \
+  --cont-batching \
+  --spec-type draft-mtp --spec-draft-n-max 1 --spec-draft-p-min 0.10 -ngld 999 -ctkd f16 -ctvd f16 \
+  --cache-prompt \
+  --cache-reuse 64 \
+  --threads 4 --threads-batch 6 \
+  --no-warmup
+Restart=no
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
