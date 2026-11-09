@@ -15,6 +15,7 @@ import json
 import logging
 import subprocess
 import threading
+import concurrent.futures
 import re
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -918,6 +919,92 @@ def build_cluster_capabilities(models_dict):
             lookup[clean_name] = m_id
     return {"models": caps, "lookup": lookup}
 
+class SkeletonOfThoughtEngine:
+    @staticmethod
+    def extract_skeleton(outline_text: str) -> list[str]:
+        """Parses structured numbered points from outline response."""
+        points = []
+        for line in outline_text.splitlines():
+            line = line.strip()
+            if re.match(r'^(?:[0-9]+[\.\)]|[-*])\s+', line):
+                cleaned = re.sub(r'^(?:[0-9]+[\.\)]|[-*])\s+', '', line).strip()
+                if cleaned:
+                    points.append(cleaned)
+        return points[:6]  # Cap to max 6 parallel branches
+
+    @classmethod
+    def execute_sot(cls, prompt: str, system_prompt: str = "", model: str = "mae-qwen38-35b-moe") -> dict:
+        backend_url = f"{BACKEND_URL_MAIN}/v1/chat/completions"
+        
+        # Step 1: Generate Skeleton Outline
+        outline_req = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are an expert technical planner. Given a request, output ONLY a numbered list of 2 to 4 concise logical steps or module titles required to fulfill it. Do not write the full implementation yet."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 300,
+            "temperature": 0.2
+        }
+        r1 = requests.post(backend_url, json=outline_req, timeout=60)
+        r1.raise_for_status()
+        outline_content = r1.json()["choices"][0]["message"]["content"]
+        skeleton_points = cls.extract_skeleton(outline_content)
+        
+        if not skeleton_points or len(skeleton_points) < 2:
+            # Fallback to direct completion if outline is not decomposable
+            fallback_req = {
+                "model": model,
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}] if system_prompt else [{"role": "user", "content": prompt}],
+                "max_tokens": 2048,
+                "temperature": 0.2
+            }
+            return requests.post(backend_url, json=fallback_req, timeout=180).json()
+
+        # Step 2: Parallel Point Expansion via Continuous Batching Slots
+        def expand_point(idx: int, point: str) -> tuple[int, str]:
+            sub_prompt = f"Original Goal: {prompt}\n\nTask: Thoroughly implement / complete Step {idx+1}: '{point}'. Write complete code/explanations without placeholders."
+            req = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt or "You are a senior engineer providing comprehensive, production-grade output."},
+                    {"role": "user", "content": sub_prompt}
+                ],
+                "max_tokens": 1500,
+                "temperature": 0.2
+            }
+            res = requests.post(backend_url, json=req, timeout=180)
+            res.raise_for_status()
+            text = res.json()["choices"][0]["message"]["content"]
+            return (idx, text)
+
+        # Dispatch concurrently to saturate -np 2 slots
+        expansions = [None] * len(skeleton_points)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(expand_point, i, pt) for i, pt in enumerate(skeleton_points)]
+            for fut in concurrent.futures.as_completed(futures):
+                idx, section_text = fut.result()
+                expansions[idx] = (skeleton_points[idx], section_text)
+
+        # Step 3: Stitch Final Response
+        stitched_markdown = [f"# Solution Plan\n{outline_content}\n\n---\n"]
+        for i, (pt, body) in enumerate(expansions):
+            stitched_markdown.append(f"## {i+1}. {pt}\n\n{body}\n\n---\n")
+
+        final_content = "\n".join(stitched_markdown)
+        return {
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": final_content},
+                "finish_reason": "stop"
+            }],
+            "model": model,
+            "sot_metadata": {
+                "parallel_branches": len(skeleton_points),
+                "outline": skeleton_points
+            }
+        }
+
 class ClusterRouterHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         if "GET /health" in args[0] or "GET /v1/models" in args[0] or "GET /v1/taxonomy" in args[0]:
@@ -1192,8 +1279,54 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
     def do_POST(self):
         if self.path in ["/v1/chat/completions", "/chat/completions"]:
             self.handle_chat_completions()
+        elif self.path in ["/v1/sot/completions", "/sot/completions", "/sot"]:
+            self.handle_sot_completions()
         else:
             self.proxy_request("POST")
+
+    def handle_sot_completions(self):
+        content_len = int(self.headers.get("Content-Length", 0))
+        post_body = self.rfile.read(content_len) if content_len > 0 else b""
+        try:
+            data = json.loads(post_body.decode('utf-8'))
+            prompt = data.get("prompt")
+            if not prompt and "messages" in data and data["messages"]:
+                prompt = data["messages"][-1].get("content", "")
+            sys_msg = next((m["content"] for m in data.get("messages", []) if m.get("role") == "system"), "")
+            requested_model = data.get("model", "mae-qwen38-35b-moe")
+            target_model = resolve_target_model(requested_model)
+            
+            # Enforce multi-slot continuous batching service for SoT
+            if "256k" in target_model:
+                target_model = "mae-qwen38-35b-moe"
+                
+            ok = ensure_model_active(target_model)
+            if not ok:
+                self.send_response(504)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Failed to activate target model {target_model}"}).encode())
+                return
+            
+            log.info(f"Executing Skeleton-of-Thought on model '{target_model}' for prompt: {prompt[:60]}...")
+            result = SkeletonOfThoughtEngine.execute_sot(prompt, sys_msg, target_model)
+            resp_bytes = json.dumps(result).encode('utf-8')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(len(resp_bytes)))
+            self.end_headers()
+            self.wfile.write(resp_bytes)
+            return
+        except Exception as e:
+            log.error(f"Error in SoT pipeline: {e}")
+            if not self.wfile.closed:
+                try:
+                    self.send_error(500, f"SoT Error: {e}")
+                except Exception:
+                    pass
+            return
 
     def handle_taxonomy(self):
         """Returns dynamic model taxonomy with categories and badges for Open WebUI tree."""

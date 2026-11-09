@@ -1,5 +1,5 @@
 [Unit]
-Description=Qwen 3.8 35B-A3B Distill MoE (Dual P100 - PXA 4.0 - Layer Split - MTP Speculative Decoding + Continuous Batching)
+Description=Qwen 3.8 35B-A3B Distill MoE (Dual P100 - PXA 4.0 - Layer Split - Continuous Batching - Stacked Jacobi + MTP)
 After=network.target homelab-tuning.service disable-acs-p2p.service
 
 [Service]
@@ -26,7 +26,8 @@ ExecStart=/opt/pxa/pxa-v4.0.4/bin/llama-server \
   -np 2 \
   -b 8192 -ub 256 \
   --no-mmap \
-  --spec-type mtp:n_max=3,p_min=0.85 \
+  --spec-type ngram-mod:n_max=16,n_min=2,ngram_size_n=8 \
+  --spec-type mtp:n_max=2,p_min=0.85 \
   --threads 4
 Restart=on-failure
 RestartSec=2s
