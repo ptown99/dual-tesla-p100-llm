@@ -223,6 +223,21 @@ MODELS = {
     },
 
     # 2. Qwen 3.8 27B STEM Tutor - Tensor Split NCCL + MTP 2-Draft - 256k Context
+        # 2c. Qwen 3.8 35B-A3B Distill MoE - Skeleton-of-Thought (Parallel Multi-Slot Engine)
+    "mae-qwen38-35b-sot": {
+        "service": "llama-qwen38-35b-a3b.service",
+        "name": "Qwen 3.8 35B [Skeleton-of-Thought Parallel Engine] (Dual P100 - 128k - 2x Speed)",
+        "description": "Next-Gen 35B MoE parallel execution engine. Decomposes queries into an architectural skeleton and expands sections concurrently across continuous batching slots (-np 2) for 2x faster wall-clock speed.",
+        "categories": ["moe", "reasoning"],
+        "tags": [
+            {"text": "2x Speed", "type": "speed"},
+            {"text": "128k", "type": "ctx"},
+            {"text": "SoT Parallel", "type": "engine"}
+        ],
+        "aliases": ["qwen38-35b-sot", "35b-sot", "sot", "mae-sot", "qwen-35b-sot", "mae-sot-35b"],
+        "port": 8002
+    },
+
     "mae-engineering-tutor": {
         "service": "llama-qwen38-27b-fast.service",
         "name": "Qwen 3.8 27B STEM Tutor (Dual P100 - 256k Context - 48 t/s MTP)",
@@ -1284,22 +1299,14 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
         else:
             self.proxy_request("POST")
 
-    def handle_sot_completions(self):
-        content_len = int(self.headers.get("Content-Length", 0))
-        post_body = self.rfile.read(content_len) if content_len > 0 else b""
+    def handle_sot_execution(self, data: dict, is_stream: bool = False):
         try:
-            data = json.loads(post_body.decode('utf-8'))
             prompt = data.get("prompt")
             if not prompt and "messages" in data and data["messages"]:
                 prompt = data["messages"][-1].get("content", "")
             sys_msg = next((m["content"] for m in data.get("messages", []) if m.get("role") == "system"), "")
-            requested_model = data.get("model", "mae-qwen38-35b-moe")
-            target_model = resolve_target_model(requested_model)
+            target_model = "mae-qwen38-35b-moe"
             
-            # Enforce multi-slot continuous batching service for SoT
-            if "256k" in target_model:
-                target_model = "mae-qwen38-35b-moe"
-                
             ok = ensure_model_active(target_model)
             if not ok:
                 self.send_response(504)
@@ -1309,24 +1316,74 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                 self.wfile.write(json.dumps({"error": f"Failed to activate target model {target_model}"}).encode())
                 return
             
-            log.info(f"Executing Skeleton-of-Thought on model '{target_model}' for prompt: {prompt[:60]}...")
+            log.info(f"Executing Skeleton-of-Thought on model '{target_model}' (stream={is_stream}) for prompt: {prompt[:60]}...")
             result = SkeletonOfThoughtEngine.execute_sot(prompt, sys_msg, target_model)
-            resp_bytes = json.dumps(result).encode('utf-8')
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Content-Length", str(len(resp_bytes)))
-            self.end_headers()
-            self.wfile.write(resp_bytes)
-            return
+            full_text = result["choices"][0]["message"]["content"]
+            
+            if is_stream:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "keep-alive")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                
+                chunk_id = f"chatcmpl-sot-{int(time.time())}"
+                c_role = {
+                    "id": chunk_id, "object": "chat.completion.chunk", "created": int(time.time()),
+                    "model": "mae-qwen38-35b-sot",
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}]
+                }
+                self.wfile.write(f"data: {json.dumps(c_role)}\n\n".encode())
+                self.wfile.flush()
+                
+                words = full_text.split(" ")
+                for i in range(0, len(words), 8):
+                    part = " ".join(words[i:i+8]) + (" " if i+8 < len(words) else "")
+                    c = {
+                        "id": chunk_id, "object": "chat.completion.chunk", "created": int(time.time()),
+                        "model": "mae-qwen38-35b-sot",
+                        "choices": [{"index": 0, "delta": {"content": part}, "finish_reason": None}]
+                    }
+                    self.wfile.write(f"data: {json.dumps(c)}\n\n".encode())
+                    self.wfile.flush()
+                    time.sleep(0.01)
+                    
+                c_done = {
+                    "id": chunk_id, "object": "chat.completion.chunk", "created": int(time.time()),
+                    "model": "mae-qwen38-35b-sot",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+                }
+                self.wfile.write(f"data: {json.dumps(c_done)}\n\n".encode())
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
+            else:
+                resp_bytes = json.dumps(result).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(resp_bytes)))
+                self.end_headers()
+                self.wfile.write(resp_bytes)
+                return
         except Exception as e:
-            log.error(f"Error in SoT pipeline: {e}")
+            log.error(f"Error in SoT execution: {e}")
             if not self.wfile.closed:
                 try:
                     self.send_error(500, f"SoT Error: {e}")
                 except Exception:
                     pass
             return
+
+    def handle_sot_completions(self):
+        content_len = int(self.headers.get('Content-Length', 0))
+        post_body = self.rfile.read(content_len) if content_len > 0 else b''
+        try:
+            data = json.loads(post_body.decode('utf-8'))
+        except Exception:
+            data = {}
+        self.handle_sot_execution(data, data.get('stream', False))
 
     def handle_taxonomy(self):
         """Returns dynamic model taxonomy with categories and badges for Open WebUI tree."""
@@ -1464,6 +1521,10 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             post_body = json.dumps(req_json).encode("utf-8")
         except Exception as e:
             log.warning(f"Could not parse request JSON: {e}")
+
+        if target_model == 'mae-qwen38-35b-sot' or 'sot' in target_model.lower():
+            self.handle_sot_execution(req_json, is_stream)
+            return
 
         ok = ensure_model_active(target_model)
         if not ok:
