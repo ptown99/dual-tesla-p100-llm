@@ -1451,6 +1451,23 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             # Enforce prompt cache reuse
             req_json["cache_prompt"] = True
 
+            # Sanitize image_url blocks for non-vision models to prevent mmproj rejection
+            is_vision_model = "gemma4-31b" in target_model.lower()
+            if not is_vision_model and "messages" in req_json and isinstance(req_json["messages"], list):
+                for msg in req_json["messages"]:
+                    c = msg.get("content")
+                    if isinstance(c, list):
+                        new_c = []
+                        for part in c:
+                            if isinstance(part, dict) and part.get("type") in ["image_url", "image"]:
+                                new_c.append({
+                                    "type": "text",
+                                    "text": "[Screenshot image captured: text-only model in use. Inspect via HTML source, DOM elements, or console logs instead.]"
+                                })
+                            else:
+                                new_c.append(part)
+                        msg["content"] = new_c
+
             # If target model is anime steered, reinforce persona & disable <think> blocks
             if target_model == "mae-qwen3-8b-anime":
                 msgs = req_json.get("messages", [])
