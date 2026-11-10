@@ -1568,6 +1568,44 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                         msgs[0]["content"] = f"{curr_clean}\n\n{think_directive}".strip()
                     req_json["messages"] = msgs
 
+            # Optimal agentic sampling parameters (anti-looping & diverse exploration)
+            if "temperature" not in req_json or req_json["temperature"] is None or req_json["temperature"] < 0.2:
+                req_json["temperature"] = 0.6
+            if "top_p" not in req_json or req_json["top_p"] is None:
+                req_json["top_p"] = 0.90
+            if "top_k" not in req_json or req_json["top_k"] is None:
+                req_json["top_k"] = 40
+            if "presence_penalty" not in req_json or req_json["presence_penalty"] is None or req_json["presence_penalty"] == 0:
+                req_json["presence_penalty"] = 0.2
+            if "frequency_penalty" not in req_json or req_json["frequency_penalty"] is None or req_json["frequency_penalty"] == 0:
+                req_json["frequency_penalty"] = 0.2
+            if "repeat_penalty" not in req_json or req_json["repeat_penalty"] is None:
+                req_json["repeat_penalty"] = 1.05
+
+            # Circuit breaker: detect repetitive tool loops in messages history
+            msgs = req_json.get("messages", [])
+            recent_tool_names = []
+            for m in reversed(msgs[-12:]):
+                if m.get("role") == "assistant":
+                    for tc in m.get("tool_calls", []):
+                        fn_name = tc.get("function", {}).get("name", "")
+                        if fn_name:
+                            recent_tool_names.append(fn_name)
+
+            if len(recent_tool_names) >= 3 and len(set(recent_tool_names[:3])) == 1:
+                stuck_tool = recent_tool_names[0]
+                warning_msg = (
+                    f"\n\n[CIRCUIT BREAKER: You have called '{stuck_tool}' multiple times consecutively without making progress. "
+                    f"You MUST NOT call '{stuck_tool}' again on this turn. Stop repeating failed tool calls. "
+                    f"Choose an alternate tool (such as websearch, read, or browser tools) or explain the situation directly to the user.]"
+                )
+                if msgs and msgs[0].get("role") == "system":
+                    msgs[0]["content"] += warning_msg
+                else:
+                    msgs.insert(0, {"role": "system", "content": warning_msg})
+                log.warning(f"Circuit breaker triggered for repeating tool call: '{stuck_tool}'")
+                req_json["messages"] = msgs
+
             # Sanitize and expand tools if present
             if "tools" in req_json and isinstance(req_json["tools"], list):
                 sanitized_tools = []
