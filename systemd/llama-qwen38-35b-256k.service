@@ -3,7 +3,7 @@ Description=Qwen 3.8 35B-A3B Distill MoE (Dual P100 - PXA 4.0 - Layer Split - De
 After=network.target homelab-tuning.service disable-acs-p2p.service
 
 [Service]
-TimeoutStopSec=3s
+TimeoutStopSec=15s
 KillMode=mixed
 SendSIGKILL=yes
 Type=simple

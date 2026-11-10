@@ -33,6 +33,14 @@ BACKEND_URL_GPU1 = "http://127.0.0.1:8003"
 BACKEND_URL_GPU2 = "http://127.0.0.1:8004"
 
 SWITCH_LOCK = threading.Lock()
+IN_FLIGHT_REQUESTS = 0
+IN_FLIGHT_LOCK = threading.Lock()
+
+# Services that share identical model weights and can seamlessly substitute for each other without switching
+COMPATIBLE_SERVICES = {
+    "llama-qwen38-35b-a3b.service": {"llama-qwen38-35b-256k.service"},
+    "llama-qwen38-35b-256k.service": {"llama-qwen38-35b-a3b.service"},
+}
 
 PROTECTED_UNITS = {"llama-embed.service", "llama-rerank.service", "stem-doc-loader.service"}
 
@@ -704,14 +712,35 @@ def ensure_model_active(target_model_key: str) -> bool:
         except Exception:
             pass
 
+        # Check if an already running compatible service satisfies the request without switching
+        compat_svcs = COMPATIBLE_SERVICES.get(target_service, set())
+        for compat_svc in compat_svcs:
+            try:
+                status = subprocess.run(["sudo", "-n", "systemctl", "is-active", compat_svc], capture_output=True, text=True)
+                if status.stdout.strip() == "active":
+                    r = requests.get(f"{target_backend}/health", timeout=1)
+                    if r.status_code == 200 and r.json().get("status") == "ok":
+                        log.info(f"==> Target service '{target_service}' satisfied by already active compatible service '{compat_svc}' on port {target_port} - skipping restart!")
+                        return True
+            except Exception:
+                pass
+
         log.info(f"==> Initiating fast service switch: {target_model_key} -> {target_service} (port {target_port})")
+
+        # Gracefully wait for active in-flight requests on conflicting services to finish (up to 10s drain)
+        drain_start = time.time()
+        while time.time() - drain_start < 10.0:
+            with IN_FLIGHT_LOCK:
+                if IN_FLIGHT_REQUESTS <= 0:
+                    break
+            time.sleep(0.5)
 
         if target_port == 8002:
             # Parallel stop of all active llama services that conflict with target_service
             try:
                 st = subprocess.run(["systemctl", "list-units", "llama-*.service", "--state=active", "--no-legend", "--plain"], capture_output=True, text=True, timeout=5)
                 active_svcs = [l.split()[0] for l in st.stdout.splitlines() if l.strip()]
-                to_stop = [s for s in active_svcs if s != target_service and s not in PROTECTED_UNITS]
+                to_stop = [s for s in active_svcs if s != target_service and s not in compat_svcs and s not in PROTECTED_UNITS]
                 is_dual = any(svc == target_service for svc in DUAL_GPU_SERVICES)
                 if is_dual:
                     for w in ["llama-worker-gpu1.service", "llama-worker-gpu2.service"]:
@@ -1020,6 +1049,29 @@ class SkeletonOfThoughtEngine:
             }
         }
 
+def sanitize_payload_for_text_model(obj):
+    """Recursively traverses payload dicts/lists to replace image/audio blocks with safe text notifications."""
+    if isinstance(obj, dict):
+        t = str(obj.get("type", "")).lower()
+        if t in ("image_url", "image", "input_audio", "audio"):
+            return {
+                "type": "text",
+                "text": "[Visual media / screenshot skipped: active model is text-only. Inspect via HTML source, DOM text, or console logs.]"
+            }
+        if "image_url" in obj:
+            return {
+                "type": "text",
+                "text": "[Screenshot image skipped: active model is text-only.]"
+            }
+        return {k: sanitize_payload_for_text_model(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_payload_for_text_model(elem) for elem in obj]
+    elif isinstance(obj, str):
+        if obj.startswith("data:image/") or ";base64," in obj[:120]:
+            return "[Base64 image skipped: active model is text-only]"
+        return obj
+    return obj
+
 class ClusterRouterHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         if "GET /health" in args[0] or "GET /v1/models" in args[0] or "GET /v1/taxonomy" in args[0]:
@@ -1300,6 +1352,9 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             self.proxy_request("POST")
 
     def handle_sot_execution(self, data: dict, is_stream: bool = False):
+        global IN_FLIGHT_REQUESTS
+        with IN_FLIGHT_LOCK:
+            IN_FLIGHT_REQUESTS += 1
         try:
             prompt = data.get("prompt")
             if not prompt and "messages" in data and data["messages"]:
@@ -1375,6 +1430,9 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                 except Exception:
                     pass
             return
+        finally:
+            with IN_FLIGHT_LOCK:
+                IN_FLIGHT_REQUESTS = max(0, IN_FLIGHT_REQUESTS - 1)
 
     def handle_sot_completions(self):
         content_len = int(self.headers.get('Content-Length', 0))
@@ -1451,22 +1509,13 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             # Enforce prompt cache reuse
             req_json["cache_prompt"] = True
 
-            # Sanitize image_url blocks for non-vision models to prevent mmproj rejection
+            # Sanitize multimodal content for text-only models to prevent mmproj rejection
             is_vision_model = "gemma4-31b" in target_model.lower()
-            if not is_vision_model and "messages" in req_json and isinstance(req_json["messages"], list):
-                for msg in req_json["messages"]:
-                    c = msg.get("content")
-                    if isinstance(c, list):
-                        new_c = []
-                        for part in c:
-                            if isinstance(part, dict) and part.get("type") in ["image_url", "image"]:
-                                new_c.append({
-                                    "type": "text",
-                                    "text": "[Screenshot image captured: text-only model in use. Inspect via HTML source, DOM elements, or console logs instead.]"
-                                })
-                            else:
-                                new_c.append(part)
-                        msg["content"] = new_c
+            if not is_vision_model:
+                if "messages" in req_json:
+                    req_json["messages"] = sanitize_payload_for_text_model(req_json["messages"])
+                if "prompt" in req_json:
+                    req_json["prompt"] = sanitize_payload_for_text_model(req_json["prompt"])
 
             # If target model is anime steered, reinforce persona & disable <think> blocks
             if target_model == "mae-qwen3-8b-anime":
@@ -1560,31 +1609,38 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
         self.forward_to_backend(method, body, BACKEND_URL_MAIN)
 
     def forward_to_backend(self, method: str, body: bytes, backend_base_url: str):
-        target_url = f"{backend_base_url}{self.path}"
-        headers = {}
-        for h, val in self.headers.items():
-            if h.lower() not in ["host", "content-length"]:
-                headers[h] = val
-
+        global IN_FLIGHT_REQUESTS
+        with IN_FLIGHT_LOCK:
+            IN_FLIGHT_REQUESTS += 1
         try:
-            with requests.request(method, target_url, data=body, headers=headers, stream=True, timeout=300) as resp:
-                self.send_response(resp.status_code)
-                for k, v in resp.headers.items():
-                    if k.lower() not in ["content-length", "transfer-encoding", "connection"]:
-                        self.send_header(k, v)
-                self.end_headers()
+            target_url = f"{backend_base_url}{self.path}"
+            headers = {}
+            for h, val in self.headers.items():
+                if h.lower() not in ["host", "content-length"]:
+                    headers[h] = val
 
-                for chunk in resp.iter_content(chunk_size=1024):
-                    if chunk:
-                        self.wfile.write(chunk)
-                        self.wfile.flush()
-        except Exception as e:
-            log.error(f"Proxy forwarding error to {target_url}: {e}")
-            if not self.wfile.closed:
-                try:
-                    self.send_error(502, f"Bad Gateway: {e}")
-                except Exception:
-                    pass
+            try:
+                with requests.request(method, target_url, data=body, headers=headers, stream=True, timeout=300) as resp:
+                    self.send_response(resp.status_code)
+                    for k, v in resp.headers.items():
+                        if k.lower() not in ["content-length", "transfer-encoding", "connection"]:
+                            self.send_header(k, v)
+                    self.end_headers()
+
+                    for chunk in resp.iter_content(chunk_size=1024):
+                        if chunk:
+                            self.wfile.write(chunk)
+                            self.wfile.flush()
+            except Exception as e:
+                log.error(f"Proxy forwarding error to {target_url}: {e}")
+                if not self.wfile.closed:
+                    try:
+                        self.send_error(502, f"Bad Gateway: {e}")
+                    except Exception:
+                        pass
+        finally:
+            with IN_FLIGHT_LOCK:
+                IN_FLIGHT_REQUESTS = max(0, IN_FLIGHT_REQUESTS - 1)
 
 def run():
     port = 8001
