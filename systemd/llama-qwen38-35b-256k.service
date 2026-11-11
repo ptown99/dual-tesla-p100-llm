@@ -27,6 +27,8 @@ ExecStart=/opt/pxa/pxa-v4.0.4/bin/llama-server \
   -b 32768 -ub 2048 \
   --no-mmap \
   --spec-type mtp:n_max=3,p_min=0.85 \
+  --ctx-checkpoints 96 \
+  --ctx-checkpoints-interval 1024 \
   --threads 4
 Restart=on-failure
 RestartSec=2s
