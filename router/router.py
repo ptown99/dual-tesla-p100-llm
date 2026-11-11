@@ -1566,7 +1566,7 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
 
             # Handle reasoning effort / thinking levels for reasoning models
             reasoning_effort = req_json.get("reasoning_effort")
-            is_reasoning_model = any(k in target_model.lower() for k in ["r1", "nemotron", "phi4", "3.8", "engineering", "reason", "35b"])
+            is_reasoning_model = any(k in target_model.lower() for k in ["r1", "nemotron", "phi4", "reason"])
             if reasoning_effort and is_reasoning_model:
                 msgs = req_json.get("messages", [])
                 effort_str = str(reasoning_effort).lower()
