@@ -1372,7 +1372,11 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
         try:
             prompt = data.get("prompt")
             if not prompt and "messages" in data and data["messages"]:
-                prompt = data["messages"][-1].get("content", "")
+                raw_c = data["messages"][-1].get("content", "")
+                if isinstance(raw_c, list):
+                    prompt = " ".join(part.get("text", "") for part in raw_c if isinstance(part, dict) and part.get("type") == "text")
+                else:
+                    prompt = str(raw_c or "")
             sys_msg = next((m["content"] for m in data.get("messages", []) if m.get("role") == "system"), "")
             target_model = "mae-qwen38-35b-moe"
             
@@ -1385,10 +1389,6 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                 self.wfile.write(json.dumps({"error": f"Failed to activate target model {target_model}"}).encode())
                 return
             
-            log.info(f"Executing Skeleton-of-Thought on model '{target_model}' (stream={is_stream}) for prompt: {prompt[:60]}...")
-            result = SkeletonOfThoughtEngine.execute_sot(prompt, sys_msg, target_model)
-            full_text = result["choices"][0]["message"]["content"]
-            
             if is_stream:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
@@ -1396,7 +1396,14 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                 self.send_header("Connection", "keep-alive")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                
+                self.wfile.write(b": keep-alive\n\n")
+                self.wfile.flush()
+
+            log.info(f"Executing Skeleton-of-Thought on model '{target_model}' (stream={is_stream}) for prompt: {prompt[:60]}...")
+            result = SkeletonOfThoughtEngine.execute_sot(prompt, sys_msg, target_model)
+            full_text = result["choices"][0]["message"]["content"]
+            
+            if is_stream:
                 chunk_id = f"chatcmpl-sot-{int(time.time())}"
                 c_role = {
                     "id": chunk_id, "object": "chat.completion.chunk", "created": int(time.time()),
@@ -1625,8 +1632,20 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             log.warning(f"Could not parse request JSON: {e}")
 
         if target_model == 'mae-qwen38-35b-sot' or 'sot' in target_model.lower():
-            self.handle_sot_execution(req_json, is_stream)
-            return
+            # Skeleton-of-Thought is ONLY suitable for standalone single-turn generative text prompts.
+            # If tools/skills are present or if this is a multi-turn conversation,
+            # we MUST bypass SoT and forward directly to the native backend engine (llama-server)
+            # so the model can preserve full multi-turn context and emit native tool_calls!
+            has_tools = bool(req_json.get("tools"))
+            messages = req_json.get("messages", [])
+            user_assistant_msgs = [m for m in messages if m.get("role") in ("user", "assistant", "tool")]
+            is_multiturn = len(user_assistant_msgs) > 1
+
+            if has_tools or is_multiturn:
+                log.info(f"Model '{target_model}' called with tools={has_tools} multiturn={is_multiturn} -> bypassing SoT, forwarding directly to native backend")
+            else:
+                self.handle_sot_execution(req_json, is_stream)
+                return
 
         ok = ensure_model_active(target_model)
         if not ok:
