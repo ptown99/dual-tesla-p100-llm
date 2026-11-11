@@ -37,10 +37,7 @@ IN_FLIGHT_REQUESTS = 0
 IN_FLIGHT_LOCK = threading.Lock()
 
 # Services that share identical model weights and can seamlessly substitute for each other without switching
-COMPATIBLE_SERVICES = {
-    "llama-qwen38-35b-a3b.service": {"llama-qwen38-35b-256k.service"},
-    "llama-qwen38-35b-256k.service": {"llama-qwen38-35b-a3b.service"},
-}
+COMPATIBLE_SERVICES = {}
 
 PROTECTED_UNITS = {"llama-embed.service", "llama-rerank.service", "stem-doc-loader.service"}
 
@@ -215,7 +212,21 @@ MODELS = {
         "port": 8002
     },
 
-    # 2b. Qwen 3.8 35B-A3B Distill MoE - Dedicated 256k Mega-Context (Single Session)
+    # 2b. Qwen 3.8 35B-A3B Distill MoE - Dedicated 256k Mega-Context (Single Session - Pure MTP Non-Jacobi)
+    "mae-qwen38-35b-256k-pure": {
+        "service": "llama-qwen38-35b-256k-pure.service",
+        "name": "Qwen 3.8 35B-A3B Distill MoE [Mega-Context - 256k - Pure MTP Non-Jacobi] (Dual P100 - 82 t/s)",
+        "description": "Next-Gen Qwen 3.8 MoE with Dedicated 256k Context (-np 1 single session), Pure Native MTP (no Jacobi lookahead), and FlashAttention for maximum stability in tool calls.",
+        "categories": ["moe", "longctx", "pure"],
+        "tags": [
+            {"text": "82 t/s", "type": "speed"},
+            {"text": "256k", "type": "ctx"},
+            {"text": "Pure MTP", "type": "engine"}
+        ],
+        "aliases": ["qwen38-35b-256k-pure", "35b-256k-pure", "mae-35b-256k-pure", "mae-qwen38-35b-256k-std", "256k-pure", "qwen-256k-pure"],
+        "port": 8002
+    },
+
     "mae-qwen38-35b-256k": {
         "service": "llama-qwen38-35b-256k.service",
         "name": "Qwen 3.8 35B-A3B Distill MoE [Mega-Context - 256k] (Dual P100 - 82 t/s MTP)",
@@ -1504,7 +1515,13 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             req_model = req_json.get("model", "")
             target_model = resolve_target_model(req_model)
             is_stream = req_json.get("stream", False)
-            log.info(f"Chat completion for '{req_model}' -> resolved to: '{target_model}' (stream={is_stream})")
+            tool_names = [t.get("function", {}).get("name") if isinstance(t, dict) else str(t) for t in req_json.get("tools", [])]
+            log.info(f"Chat completion for '{req_model}' -> '{target_model}' (stream={is_stream}, tools={len(tool_names)}: {tool_names[:8]})")
+            try:
+                with open("/tmp/last_chat_req.json", "w", encoding="utf-8") as f_dump:
+                    json.dump(req_json, f_dump, indent=2)
+            except Exception:
+                pass
 
             # Enforce prompt cache reuse
             req_json["cache_prompt"] = True

@@ -1,0 +1,35 @@
+[Unit]
+Description=Qwen 3.8 35B-A3B Distill MoE (Dual P100 - PXA 4.0 - Layer Split - Dedicated 256k Mega-Context - Pure MTP Non-Jacobi)
+After=network.target homelab-tuning.service disable-acs-p2p.service
+
+[Service]
+TimeoutStopSec=15s
+KillMode=mixed
+SendSIGKILL=yes
+Type=simple
+User=mimi
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1,2
+Environment=GOMP_CPU_AFFINITY=0,1,2,3
+Environment=LD_LIBRARY_PATH=/opt/pxa/pxa-v4.0.4/lib:/opt/pxa/pxa-v4.0.4/lib-compat
+EnvironmentFile=/opt/pxa/pxa-p100-moe35b-mtp.env
+ExecStart=/opt/pxa/pxa-v4.0.4/bin/llama-server \
+  --model /opt/models/phase4/Qwen3.8-35B-A3B-Q4_K_M.gguf \
+  --alias mae-qwen38-35b-256k-pure \
+  --host 0.0.0.0 --port 8002 \
+  --jinja \
+  -sm layer \
+  -ngl 999 \
+  -fa on \
+  -c 262144 \
+  -ctk q4_0 -ctv q4_0 \
+  -np 1 \
+  -b 32768 -ub 2048 \
+  --no-mmap \
+  --spec-type mtp:n_max=3,p_min=0.85 \
+  --threads 4
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=multi-user.target

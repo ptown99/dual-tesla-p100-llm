@@ -26,8 +26,7 @@ ExecStart=/opt/pxa/pxa-v4.0.4/bin/llama-server \
   -np 1 \
   -b 32768 -ub 2048 \
   --no-mmap \
-  --spec-type ngram-mod:n_max=16,n_min=2,ngram_size_n=8 \
-  --spec-type mtp:n_max=2,p_min=0.85 \
+  --spec-type mtp:n_max=3,p_min=0.85 \
   --threads 4
 Restart=on-failure
 RestartSec=2s
