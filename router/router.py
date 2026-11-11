@@ -217,7 +217,7 @@ MODELS = {
 
     # 2b. Qwen 3.8 35B-A3B Distill MoE - Dedicated 256k Mega-Context (Single Session - Pure MTP Non-Jacobi)
     "mae-qwen38-35b-256k-pure": {
-        "service": "llama-qwen38-35b-256k-pure.service",
+        "service": "llama-qwen38-35b-256k.service",
         "name": "Qwen 3.8 35B-A3B Distill MoE [Mega-Context - 256k - Pure MTP Non-Jacobi] (Dual P100 - 82 t/s)",
         "description": "Next-Gen Qwen 3.8 MoE with Dedicated 256k Context (-np 1 single session), Pure Native MTP (no Jacobi lookahead), and FlashAttention for maximum stability in tool calls.",
         "categories": ["moe", "longctx", "pure"],
@@ -231,7 +231,7 @@ MODELS = {
     },
 
     "mae-qwen38-35b-256k": {
-        "service": "llama-qwen38-35b-256k-pure.service",
+        "service": "llama-qwen38-35b-256k.service",
         "name": "Qwen 3.8 35B-A3B Distill MoE [Mega-Context - 256k] (Dual P100 - 82 t/s MTP)",
         "description": "Next-Gen Qwen 3.8 MoE with Dedicated 256k Context (-np 1 single session), Native Multi-Token Prediction (82 tok/s), and FlashAttention for massive codebases.",
         "categories": ["moe", "longctx"],
