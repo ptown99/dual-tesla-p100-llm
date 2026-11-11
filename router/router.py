@@ -37,7 +37,10 @@ IN_FLIGHT_REQUESTS = 0
 IN_FLIGHT_LOCK = threading.Lock()
 
 # Services that share identical model weights and can seamlessly substitute for each other without switching
-COMPATIBLE_SERVICES = {}
+COMPATIBLE_SERVICES = {
+    "llama-qwen38-35b-256k.service": {"llama-qwen38-35b-256k-pure.service"},
+    "llama-qwen38-35b-256k-pure.service": {"llama-qwen38-35b-256k.service"},
+}
 
 PROTECTED_UNITS = {"llama-embed.service", "llama-rerank.service", "stem-doc-loader.service"}
 
@@ -228,7 +231,7 @@ MODELS = {
     },
 
     "mae-qwen38-35b-256k": {
-        "service": "llama-qwen38-35b-256k.service",
+        "service": "llama-qwen38-35b-256k-pure.service",
         "name": "Qwen 3.8 35B-A3B Distill MoE [Mega-Context - 256k] (Dual P100 - 82 t/s MTP)",
         "description": "Next-Gen Qwen 3.8 MoE with Dedicated 256k Context (-np 1 single session), Native Multi-Token Prediction (82 tok/s), and FlashAttention for massive codebases.",
         "categories": ["moe", "longctx"],
@@ -1599,29 +1602,7 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
             if "repeat_penalty" not in req_json or req_json["repeat_penalty"] is None:
                 req_json["repeat_penalty"] = 1.05
 
-            # Circuit breaker: detect repetitive tool loops in messages history
-            msgs = req_json.get("messages", [])
-            recent_tool_names = []
-            for m in reversed(msgs[-12:]):
-                if m.get("role") == "assistant":
-                    for tc in m.get("tool_calls", []):
-                        fn_name = tc.get("function", {}).get("name", "")
-                        if fn_name:
-                            recent_tool_names.append(fn_name)
 
-            if len(recent_tool_names) >= 3 and len(set(recent_tool_names[:3])) == 1:
-                stuck_tool = recent_tool_names[0]
-                warning_msg = (
-                    f"\n\n[CIRCUIT BREAKER: You have called '{stuck_tool}' multiple times consecutively without making progress. "
-                    f"You MUST NOT call '{stuck_tool}' again on this turn. Stop repeating failed tool calls. "
-                    f"Choose an alternate tool (such as websearch, read, or browser tools) or explain the situation directly to the user.]"
-                )
-                if msgs and msgs[0].get("role") == "system":
-                    msgs[0]["content"] += warning_msg
-                else:
-                    msgs.insert(0, {"role": "system", "content": warning_msg})
-                log.warning(f"Circuit breaker triggered for repeating tool call: '{stuck_tool}'")
-                req_json["messages"] = msgs
 
             # Sanitize and expand tools if present
             if "tools" in req_json and isinstance(req_json["tools"], list):
@@ -1675,7 +1656,7 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
                     headers[h] = val
 
             try:
-                with requests.request(method, target_url, data=body, headers=headers, stream=True, timeout=300) as resp:
+                with requests.request(method, target_url, data=body, headers=headers, stream=True, timeout=(15, 1800)) as resp:
                     self.send_response(resp.status_code)
                     for k, v in resp.headers.items():
                         if k.lower() not in ["content-length", "transfer-encoding", "connection"]:
