@@ -721,7 +721,7 @@ def ensure_model_active(target_model_key: str) -> bool:
             status = subprocess.run(["sudo", "-n", "systemctl", "is-active", target_service], capture_output=True, text=True)
             if status.stdout.strip() == "active":
                 r = requests.get(f"{target_backend}/health", timeout=1)
-                if r.status_code == 200 and r.json().get("status") == "ok":
+                if r.status_code in [200, 503] and r.json().get("status") in ["ok", "busy"]:
                     return True
         except Exception:
             pass
@@ -733,7 +733,7 @@ def ensure_model_active(target_model_key: str) -> bool:
                 status = subprocess.run(["sudo", "-n", "systemctl", "is-active", compat_svc], capture_output=True, text=True)
                 if status.stdout.strip() == "active":
                     r = requests.get(f"{target_backend}/health", timeout=1)
-                    if r.status_code == 200 and r.json().get("status") == "ok":
+                    if r.status_code in [200, 503] and r.json().get("status") in ["ok", "busy"]:
                         log.info(f"==> Target service '{target_service}' satisfied by already active compatible service '{compat_svc}' on port {target_port} - skipping restart!")
                         return True
             except Exception:
@@ -820,7 +820,7 @@ def ensure_model_active(target_model_key: str) -> bool:
 
             try:
                 r = requests.get(f"{target_backend}/health", timeout=1)
-                if r.status_code == 200 and r.json().get("status") == "ok":
+                if r.status_code in [200, 503] and r.json().get("status") in ["ok", "busy"]:
                     loaded = True
                     break
             except Exception:
