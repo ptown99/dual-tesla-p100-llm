@@ -262,15 +262,17 @@ MODELS = {
 
     "mae-engineering-tutor": {
         "service": "llama-qwen38-27b-fast.service",
-        "name": "Qwen 3.8 27B STEM Tutor (Dual P100 - 256k Context - 48 t/s MTP)",
-        "description": "Pascal SM 6.0 Tensor-Parallel accelerated Qwen 3.8 27B (48 tok/s with tuned MTP 2-Draft, 39 tok/s raw, 262k context)",
+        "name": "Qwen 3.8 27B STEM Tutor [Q4_0 / Q8_0 KV] (Dual P100 - 174k Context - 32k Batch)",
+        "description": "Q4_0 weight quant with Q8_0 KV cache on Dual P100 tensor parallel (174k context, MTP 4-draft, -b 32768 -ub 2048, 2GB free with RAG)",
         "categories": ["tutor"],
         "tags": [
-            {"text": "48 t/s", "type": "speed"},
-            {"text": "256k", "type": "ctx"},
-            {"text": "MTP 2-Draft", "type": "engine"}
+            {"text": "Q4_0", "type": "quant"},
+            {"text": "Q8_0 KV", "type": "perf"},
+            {"text": "174k", "type": "ctx"},
+            {"text": "MTP 4-Draft", "type": "engine"}
         ],
         "aliases": ["qwen3.8-native", "qwen3.8", "qwen-3.8-27b", "mae-qwen38-tutor", "qwen", "qwen3.8:27b"],
+        "context_tokens": 178176,
         "port": 8002
     },
 
