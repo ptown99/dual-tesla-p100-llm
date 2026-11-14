@@ -454,6 +454,7 @@ MODELS = {
             {"text": "High Precision", "type": "engine"}
         ],
         "aliases": ["mae-engineering-tutor-fp16", "qwen3.8:fp16", "qwen3.8-fp16", "qwen27b:fp16"],
+        "context_tokens": 134144,
         "port": 8002
     },
 
@@ -1087,6 +1088,18 @@ def sanitize_payload_for_text_model(obj):
         return obj
     return obj
 
+def get_model_context(model_id: str, info: dict) -> int:
+    if "context_tokens" in info:
+        return int(info["context_tokens"])
+    name = info.get("name", model_id)
+    desc = info.get("description", "")
+    m = re.search(r'(\d+)\s*k\b', name, re.IGNORECASE)
+    if not m:
+        m = re.search(r'(\d+)\s*k\b', desc, re.IGNORECASE)
+    if m:
+        return int(m.group(1)) * 1024
+    return 32768
+
 class ClusterRouterHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         if "GET /health" in args[0] or "GET /v1/models" in args[0] or "GET /v1/taxonomy" in args[0]:
@@ -1104,15 +1117,7 @@ class ClusterRouterHandler(BaseHTTPRequestHandler):
         models_dict = {}
         for model_id, info in MODELS.items():
             name = info.get("name", model_id)
-            desc = info.get("description", "")
-            
-            # Extract context
-            ctx = 32768
-            m = re.search(r'(\d+)\s*k\b', name, re.IGNORECASE)
-            if not m:
-                m = re.search(r'(\d+)\s*k\b', desc, re.IGNORECASE)
-            if m:
-                ctx = int(m.group(1)) * 1024
+            ctx = get_model_context(model_id, info)
             
             model_entry = {
                 "name": name,
@@ -1490,19 +1495,26 @@ body {{ background-color: #0d1117; color: #c9d1d9; margin: 0; padding: 20px; }}
         self.wfile.write(body)
 
     def handle_models_list(self):
-        """Returns canonical models for Open WebUI model selector."""
+        """Returns canonical models for Open WebUI, OpenCode, and OpenAI-compatible clients."""
         data = []
         for model_id, info in MODELS.items():
             if info.get("hide_from_tree"):
                 continue
+            ctx = get_model_context(model_id, info)
             data.append({
                 "id": model_id,
                 "name": info["name"],
                 "object": "model",
                 "created": 1792900000,
                 "owned_by": "cluster",
+                "context_length": ctx,
+                "max_context_length": ctx,
+                "context_window": ctx,
+                "max_tokens": ctx,
                 "meta": {
-                    "description": info["description"]
+                    "description": info["description"],
+                    "context_length": ctx,
+                    "max_tokens": ctx
                 }
             })
         data.sort(key=lambda x: x["name"].lower())
