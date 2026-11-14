@@ -24,7 +24,7 @@ ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   -fa on \
   -c 215040 \
   -ctk q8_0 -ctv q8_0 \
-  -b 32768 -ub 2048 -np 1 \
+  -b 32768 -ub 1024 -np 1 \
   --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0.5 \
   -ngld 999 -ctkd q8_0 -ctvd q8_0 \
   --jinja --temp 1.0 --top-k 20 --top-p 0.95 --min-p 0.0 \
