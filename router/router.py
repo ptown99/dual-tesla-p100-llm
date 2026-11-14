@@ -262,17 +262,17 @@ MODELS = {
 
     "mae-engineering-tutor": {
         "service": "llama-qwen38-27b-fast.service",
-        "name": "Qwen 3.8 27B STEM Tutor [Q4_0 / Q8_0 KV] (Dual P100 - 174k Context - 32k Batch)",
-        "description": "Q4_0 weight quant with Q8_0 KV cache on Dual P100 tensor parallel (174k context, MTP 4-draft, -b 32768 -ub 2048, 2GB free with RAG)",
+        "name": "Qwen 3.8 27B STEM Tutor [IQ4_XS / Q8_0 KV] (Dual P100 - 210k Context - 32k Batch)",
+        "description": "Qwen 3.8 27B IQ4_XS weights with Q8_0 KV cache on Dual P100 tensor parallel (210k context, MTP 4-draft with p_min=0.5, -b 32768 -ub 2048, 27-50 t/s, 2GB free with RAG)",
         "categories": ["tutor"],
         "tags": [
-            {"text": "Q4_0", "type": "quant"},
+            {"text": "IQ4_XS", "type": "quant"},
             {"text": "Q8_0 KV", "type": "perf"},
-            {"text": "174k", "type": "ctx"},
+            {"text": "210k", "type": "ctx"},
             {"text": "MTP 4-Draft", "type": "engine"}
         ],
         "aliases": ["qwen3.8-native", "qwen3.8", "qwen-3.8-27b", "mae-qwen38-tutor", "qwen", "qwen3.8:27b"],
-        "context_tokens": 178176,
+        "context_tokens": 215040,
         "port": 8002
     },
 
@@ -940,7 +940,7 @@ def get_model_capabilities(m_id, info):
         elif "35b" in name_l and "moe" in name_l:
             badge = {"text": "35B MoE MTP (82 t/s)", "desc": "Qwen 3.8 35B MoE Engine (128k Context - 82 t/s MTP - np=2)"}
         elif "27b" in name_l:
-            badge = {"text": "27B Tensor MTP (48 t/s)", "desc": "Qwen 3.8 27B STEM Tutor (256k Context)"}
+            badge = {"text": "27B Tensor MTP (27-50 t/s)", "desc": "Qwen 3.8 27B STEM Tutor [IQ4_XS] (210k Context)"}
         elif "30b" in name_l and "moe" in name_l:
             badge = {"text": "30B MoE (91 t/s)", "desc": "Qwen3 30B MoE Engine (128k Context)"}
         elif "26b" in name_l and "moe" in name_l:

@@ -1,5 +1,5 @@
 [Unit]
-Description=Qwen 3.8 27B STEM Tutor (Dual P100 - Curated P100 sm_60 Tensor Parallel - 174k Context Q8_0 KV + MTP 4-Draft)
+Description=Qwen 3.8 27B STEM Tutor (Dual P100 - Curated P100 sm_60 Tensor Parallel - 210k Context Q8_0 KV + MTP 4-Draft)
 After=network.target homelab-tuning.service disable-acs-p2p.service
 
 [Service]
@@ -15,18 +15,18 @@ Environment=GGML_CUDA_GRAPHS_PRE_VOLTA=3
 Environment=LLAMA_SPEC_SAMPLE_TEMP=1.0
 Environment=LLAMA_SPEC_DRAFT_TOPK=20
 ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
-  --model /opt/models/phase4/Qwen3.8-27B-Q4_0.gguf \
+  --model /opt/models/phase4/Qwen3.8-27B-UD-IQ4_XS.gguf \
   --alias mae-engineering-tutor \
   --fit off \
   --host 0.0.0.0 --port 8002 \
   -sm tensor \
   -ngl 999 \
   -fa on \
-  -c 178176 \
+  -c 215040 \
   -ctk q8_0 -ctv q8_0 \
   -b 32768 -ub 2048 -np 1 \
-  --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0.2 \
-  -ngld 999 -ctkd f16 -ctvd f16 \
+  --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0.5 \
+  -ngld 999 -ctkd q8_0 -ctvd q8_0 \
   --jinja --temp 1.0 --top-k 20 --top-p 0.95 --min-p 0.0 \
   --slots --slot-save-path /var/cache/llama-kv \
   --threads 4 --threads-batch 6 \
