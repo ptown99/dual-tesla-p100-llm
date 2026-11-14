@@ -1,0 +1,39 @@
+[Unit]
+Description=Qwen 3.8 27B STEM Tutor (Dual P100 - Curated P100 sm_60 Tensor Parallel - Precision FP16 KV + MTP 4-Draft)
+After=network.target homelab-tuning.service disable-acs-p2p.service
+
+[Service]
+TimeoutStopSec=15s
+KillMode=mixed
+SendSIGKILL=yes
+Environment=GOMP_CPU_AFFINITY=0,1,2,3
+Type=simple
+User=mimi
+Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
+Environment=CUDA_VISIBLE_DEVICES=1,2
+Environment=GGML_CUDA_GRAPHS_PRE_VOLTA=3
+Environment=LLAMA_SPEC_SAMPLE_TEMP=1.0
+Environment=LLAMA_SPEC_DRAFT_TOPK=20
+ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
+  --model /opt/models/phase4/Qwen3.8-27B-UD-IQ4_XS.gguf \
+  --alias mae-engineering-tutor-fp16 \
+  --fit off \
+  --host 0.0.0.0 --port 8002 \
+  -sm tensor \
+  -ngl 999 \
+  -fa on \
+  -c 134144 \
+  -ctk f16 -ctv f16 \
+  -b 32768 -ub 2048 -np 1 \
+  --spec-type draft-mtp --spec-draft-n-max 4 --spec-draft-p-min 0.2 \
+  -ngld 999 -ctkd f16 -ctvd f16 \
+  --jinja --temp 1.0 --top-k 20 --top-p 0.95 --min-p 0.0 \
+  --slots --slot-save-path /var/cache/llama-kv \
+  --threads 4 --threads-batch 6 \
+  --no-mmap \
+  --cont-batching --no-warmup
+Restart=no
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

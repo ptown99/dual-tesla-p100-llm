@@ -444,12 +444,13 @@ MODELS = {
 
     "mae-engineering-tutor:fp16": {
         "service": "llama-qwen38-27b-fp16.service",
-        "name": "Qwen 3.8 27B STEM Tutor [FP16 KV Precision] (Dual P100 - 128k Context)",
-        "description": "High-precision unquantized FP16 KV cache for zero numerical drift in symbolic math & physics (128k context, MTP 4-draft)",
+        "name": "Qwen 3.8 27B STEM Tutor [FP16 KV Precision] (Dual P100 - 134k Context - 32k Batch)",
+        "description": "High-precision unquantized FP16 KV cache for zero numerical drift in symbolic math & physics (134k context, MTP 4-draft, -b 32768 -ub 2048)",
         "categories": ["tutor"],
         "tags": [
             {"text": "FP16 KV", "type": "perf"},
-            {"text": "128k", "type": "ctx"},
+            {"text": "134k", "type": "ctx"},
+            {"text": "32k Batch", "type": "speed"},
             {"text": "High Precision", "type": "engine"}
         ],
         "aliases": ["mae-engineering-tutor-fp16", "qwen3.8:fp16", "qwen3.8-fp16", "qwen27b:fp16"],
