@@ -32,7 +32,7 @@ ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   --threads 4 --threads-batch 4 \
   --no-mmap \
   --cont-batching --no-warmup
-Restart=no
+Restart=on-failure
 RestartSec=3
 
 [Install]

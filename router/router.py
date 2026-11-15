@@ -262,16 +262,17 @@ MODELS = {
 
     "mae-engineering-tutor": {
         "service": "llama-qwen38-27b-fast.service",
-        "name": "Qwen 3.8 27B STEM Tutor [IQ4_XS / Q8_0 KV] (Dual P100 - 210k Context - 32k Batch)",
-        "description": "Qwen 3.8 27B IQ4_XS weights with Q8_0 KV cache on Dual P100 tensor parallel (210k context, MTP 4-draft with p_min=0.5, -b 32768 -ub 2048, 27-50 t/s, 2GB free with RAG)",
+        "name": "Qwen 3.8 27B STEM Tutor [P5 Megakernel / Q8_0 KV] (Dual P100 - 215k Context - 46 t/s)",
+        "description": "Qwen 3.8 27B accelerated with P5 Option A Persistent Cooperative Megakernel (nodes 60..66 fused across 56 SMs), Q8_0 KV cache, and MTP 3-draft speculation (215k context, 46.1 tok/s engine eval, 32.4 tok/s sustained E2E, 3.5GB free VRAM with RAG).",
         "categories": ["tutor"],
         "tags": [
-            {"text": "IQ4_XS", "type": "quant"},
+            {"text": "P5 Megakernel", "type": "perf"},
+            {"text": "46.1 t/s", "type": "speed"},
             {"text": "Q8_0 KV", "type": "perf"},
-            {"text": "210k", "type": "ctx"},
-            {"text": "MTP 4-Draft", "type": "engine"}
+            {"text": "215k", "type": "ctx"},
+            {"text": "MTP 3-Draft", "type": "engine"}
         ],
-        "aliases": ["qwen3.8-native", "qwen3.8", "qwen-3.8-27b", "mae-qwen38-tutor", "qwen", "qwen3.8:27b"],
+        "aliases": ["qwen3.8-native", "qwen3.8", "qwen-3.8-27b", "mae-qwen38-tutor", "qwen", "qwen3.8:27b", "qwen3.8-megakernel", "qwen-megakernel", "megakernel", "qwen27b-megakernel", "mae-megakernel"],
         "context_tokens": 215040,
         "port": 8002
     },
@@ -794,7 +795,7 @@ def ensure_model_active(target_model_key: str) -> bool:
         for _ in range(50):
             try:
                 test_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                test_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                # Do NOT set SO_REUSEADDR so we guarantee the port is released from TIME_WAIT
                 test_s.bind(('0.0.0.0', target_port))
                 test_s.close()
                 break
@@ -803,7 +804,7 @@ def ensure_model_active(target_model_key: str) -> bool:
                     test_s.close()
                 except Exception:
                     pass
-                time.sleep(0.2)
+                time.sleep(0.5)
 
         subprocess.run(["sudo", "-n", "systemctl", "start", target_service], check=True)
 
