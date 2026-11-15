@@ -2,8 +2,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CUDA](https://img.shields.io/badge/CUDA-12.x%20(sm__60)-green.svg)](https://developer.nvidia.com)
-[![Architecture](https://img.shields.io/badge/Architecture-Dual%20NVIDIA%20Tesla%20P100%20(32GB%20HBM2)-orange.svg)]()
-[![Model Support](https://img.shields.io/badge/Model-Qwen%203.8%2027B%20%2F%2035B%20MoE-purple.svg)]()
+[![Hardware](https://img.shields.io/badge/Hardware-Dual%20Tesla%20P100%20(32GB%20HBM2)-orange.svg)]()
+[![Megakernel](https://img.shields.io/badge/Kernel-P5%20Cooperative%20Megakernel-red.svg)]()
+[![Speculation](https://img.shields.io/badge/Speculation-MTP%203--Draft%20(58.2%25%20Acc)-brightgreen.svg)]()
+[![Context](https://img.shields.io/badge/Context-215k%20(Q8__0%20KV)-blueviolet.svg)]()
+[![Models](https://img.shields.io/badge/Models-Qwen%203.8%2027B%20%7C%2035B%20MoE-purple.svg)]()
 
 Turn a pair of **$150 Tesla P100 16GB cards** (32 GB HBM2 total, 732 GB/s physical bandwidth each, 1,464 GB/s aggregate) into an enterprise-grade inference engine capable of running **Qwen 3.8 27B at 46.1+ tokens/second** (57.6+ tok/s peak) and **Qwen 3.8 35B MoE at 82+ tokens/second** across **215k – 256k mega-context windows**.
 
@@ -149,6 +152,18 @@ Under sustained STEM inference (Navier-Stokes derivation, finite element Galerki
 * **P100 Power Draw:** 135.5 W (GPU 1) / 128.3 W (GPU 2)
 * **GPU 0 (Quadro M2000):** Strictly 0% compute, 2 MiB VRAM, 11 W (< 25 W slot limit)
 * **Free VRAM Safety Cushion:** **3,469 MiB** on GPU 1, **3,467 MiB** on GPU 2
+
+---
+
+## 🏷️ Topics & Search Keywords
+
+To help researchers, homelab builders, and CUDA developers discover these optimizations, this project indexes the following core topics and keywords:
+
+* **Hardware & Acceleration:** `nvidia-tesla-p100`, `pascal-gp100`, `sm_60`, `hbm2`, `dual-gpu`, `tensor-parallelism`, `pcie-p2p`, `dma-direct`, `acs-override`, `dell-precision-7910`, `xeon-e5-2623`, `budget-llm-server`, `homelab-ai`
+* **Inference Frameworks & Kernels:** `llama-cpp`, `llamacpp`, `ggml`, `ggml-cuda`, `cuda-12`, `megakernel`, `cooperative-groups`, `persistent-grid`, `grid-sync`, `kernel-fusion`, `flashattention-sm60`, `fast-fp16`, `swiglu`, `rmsnorm-fusion`
+* **Models & Architectures:** `qwen-3-8`, `qwen38`, `qwen-27b`, `qwen-35b-moe`, `gemma-4`, `deepseek-r1`, `mixture-of-experts`, `moe-inference`
+* **Quantization & Context:** `iq4-xs`, `iq3-xxs`, `iq2-xs`, `q4-k`, `q8-0`, `kv-cache`, `215k-context`, `256k-context`, `long-context-llm`, `lossless-kv-quantization`
+* **Decoding & Serving:** `speculative-decoding`, `multi-token-prediction`, `mtp`, `jacobi-decoding`, `skeleton-of-thought`, `continuous-batching`, `openai-compatible-api`, `systemd-service`, `rag-server`
 
 ---
 
