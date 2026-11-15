@@ -6,14 +6,14 @@ After=network.target homelab-tuning.service disable-acs-p2p.service
 TimeoutStopSec=15s
 KillMode=mixed
 SendSIGKILL=yes
+LimitRTPRIO=99
+LimitNICE=-20
 Environment=GOMP_CPU_AFFINITY=0,1,2,3
 Type=simple
 User=mimi
 Environment=CUDA_DEVICE_ORDER=PCI_BUS_ID
 Environment=CUDA_VISIBLE_DEVICES=1,2
 Environment=GGML_CUDA_GRAPHS_PRE_VOLTA=3
-Environment=LLAMA_SPEC_SAMPLE_TEMP=1.0
-Environment=LLAMA_SPEC_DRAFT_TOPK=20
 ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   --model /opt/models/phase4/Qwen3.8-27B-UD-IQ4_XS.gguf \
   --alias mae-engineering-tutor \
@@ -25,14 +25,15 @@ ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   -c 215040 \
   -ctk q8_0 -ctv q8_0 \
   -b 32768 -ub 512 -np 1 \
-  --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.18 \
+  --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.22 \
   -ngld 999 -ctkd q8_0 -ctvd q8_0 \
   --jinja --temp 0.0 --top-k 20 --top-p 1.0 --min-p 0.0 \
   --slots --slot-save-path /var/cache/llama-kv \
-  --cache-reuse 64 \
-  --threads 4 --threads-batch 4 \
+  --threads 2 --threads-batch 4 \
+  --prio 2 --prio-batch 2 --prio-draft 2 \
+  --poll 100 --poll-batch 1 --poll-draft 1 \
   --no-mmap \
-  --cont-batching --no-warmup
+  --cont-batching
 Restart=on-failure
 RestartSec=3
 
