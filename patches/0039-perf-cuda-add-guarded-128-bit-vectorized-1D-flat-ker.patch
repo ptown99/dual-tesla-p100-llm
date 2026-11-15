@@ -1,0 +1,110 @@
+From dc071bcc2c060a51ec2a826a82142100163d41c7 Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 8 Nov 2026 06:08:06 +0000
+Subject: [PATCH 39/45] perf(cuda): add guarded 128-bit vectorized 1D flat
+ kernel to binbcast
+
+---
+ ggml/src/ggml-cuda/binbcast.cu | 79 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 79 insertions(+)
+
+diff --git a/ggml/src/ggml-cuda/binbcast.cu b/ggml/src/ggml-cuda/binbcast.cu
+index 2e38077..dc93097 100644
+--- a/ggml/src/ggml-cuda/binbcast.cu
++++ b/ggml/src/ggml-cuda/binbcast.cu
+@@ -26,6 +26,53 @@ static __device__ __forceinline__ float op_div(const float a, const float b) {
+     return a / b;
+ }
+ 
++
++template <float (*bin_op)(const float, const float), typename src0_t, typename src1_t, typename dst_t>
++static __global__ void k_bin_flat_1d(
++        const src0_t * GGML_CUDA_RESTRICT src0,
++        const src1_t * GGML_CUDA_RESTRICT src1,
++        dst_t *        GGML_CUDA_RESTRICT dst,
++        const int64_t n) {
++    ggml_cuda_pdl_lc();
++    const int64_t tid = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
++    const int64_t stride = (int64_t)blockDim.x * gridDim.x;
++    ggml_cuda_pdl_sync();
++    for (int64_t i = tid; i < n; i += stride) {
++        dst[i] = (dst_t)bin_op((float)src0[i], (float)src1[i]);
++    }
++}
++
++template <float (*bin_op)(const float, const float)>
++static __global__ void k_bin_flat_1d_f32_vec(
++        const float * GGML_CUDA_RESTRICT src0,
++        const float * GGML_CUDA_RESTRICT src1,
++        float *       GGML_CUDA_RESTRICT dst,
++        const int64_t n) {
++    ggml_cuda_pdl_lc();
++    const int64_t tid = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
++    const int64_t stride = (int64_t)blockDim.x * gridDim.x;
++    const int64_t n4 = n / 4;
++    const float4 * s0_4 = reinterpret_cast<const float4 *>(src0);
++    const float4 * s1_4 = reinterpret_cast<const float4 *>(src1);
++    float4 * dst_4      = reinterpret_cast<float4 *>(dst);
++
++    ggml_cuda_pdl_sync();
++    for (int64_t i = tid; i < n4; i += stride) {
++        float4 a = s0_4[i];
++        float4 b = s1_4[i];
++        float4 r;
++        r.x = bin_op(a.x, b.x);
++        r.y = bin_op(a.y, b.y);
++        r.z = bin_op(a.z, b.z);
++        r.w = bin_op(a.w, b.w);
++        dst_4[i] = r;
++    }
++    const int64_t rem_start = n4 * 4;
++    for (int64_t i = rem_start + tid; i < n; i += stride) {
++        dst[i] = bin_op(src0[i], src1[i]);
++    }
++}
++
+ template <float (*bin_op)(const float, const float),
+           typename src0_t,
+           typename src1_t,
+@@ -215,6 +262,38 @@ static void launch_bin_bcast_pack(const ggml_tensor * src0, const ggml_tensor *
+     }
+ 
+     {
++
++    if constexpr (sizeof...(I) == 0) {
++        if (src0 && src1 && dst &&
++            ggml_is_contiguous(src0) && ggml_is_contiguous(src1) && ggml_is_contiguous(dst) &&
++            !ggml_is_permuted(src0) && !ggml_is_permuted(src1) &&
++            ggml_are_same_shape(src0, src1) && ggml_are_same_shape(src0, dst) &&
++            cne[1] == 1 && cne[2] == 1 && cne[3] == 1) {
++
++            const int64_t n = cne[0];
++            if constexpr (std::is_same<src0_t, float>::value &&
++                          std::is_same<src1_t, float>::value &&
++                          std::is_same<dst_t, float>::value) {
++                const uintptr_t p0 = reinterpret_cast<uintptr_t>(src0_dd);
++                const uintptr_t p1 = reinterpret_cast<uintptr_t>(src1_dd);
++                const uintptr_t pd = reinterpret_cast<uintptr_t>(dst_dd);
++                if (((p0 | p1 | pd) & 0xF) == 0 && (n >= 4)) {
++                    constexpr int block_size = 256;
++                    const int64_t n4 = n / 4;
++                    const int num_blocks = std::min<int>((n4 + block_size - 1) / block_size, 56);
++                    const ggml_cuda_kernel_launch_params launch_params(dim3(num_blocks), dim3(block_size), 0, stream);
++                    ggml_cuda_kernel_launch(k_bin_flat_1d_f32_vec<bin_op>, launch_params, src0_dd, src1_dd, dst_dd, n);
++                    return;
++                }
++            }
++            constexpr int block_size = 256;
++            const int num_blocks = std::min<int>((n + block_size - 1) / block_size, 56);
++            const ggml_cuda_kernel_launch_params launch_params(dim3(num_blocks), dim3(block_size), 0, stream);
++            ggml_cuda_kernel_launch(k_bin_flat_1d<bin_op, src0_t, src1_t, dst_t>, launch_params, src0_dd, src1_dd, dst_dd, n);
++            return;
++        }
++    }
++
+         int64_t ne0 = cne[0];
+         int64_t ne1 = cne[1];
+         int64_t ne2 = cne[2];
+-- 
+2.47.3
+

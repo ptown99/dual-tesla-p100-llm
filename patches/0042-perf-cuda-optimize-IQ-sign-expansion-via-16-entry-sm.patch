@@ -1,0 +1,239 @@
+From 98edb6bc02bb43e35243880c6827c0c078041cfa Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 8 Nov 2026 15:38:33 +0000
+Subject: [PATCH 42/45] perf(cuda): optimize IQ sign expansion via 16-entry
+ smem lut and cache iq2s grid in smem
+
+---
+ ggml/src/ggml-cuda/mmvq.cu     |  4 ++
+ ggml/src/ggml-cuda/vecdotq.cuh | 85 +++++++++++++++++++++++++++-------
+ 2 files changed, 71 insertions(+), 18 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 6d6b2fe..727db97 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -627,6 +627,8 @@ static __global__ void mul_mat_vec_q(
+         iq3xxs_grid_smem_init(tid, blockDim.x * blockDim.y);
+     } else if constexpr (type == GGML_TYPE_IQ2_XS) {
+         iq2xs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ2_S) {
++        iq2s_grid_smem_init(tid, blockDim.x * blockDim.y);
+     }
+     const     int row0 = rows_per_cuda_block*blockIdx.x;
+     const     int blocks_per_row_x = ncols_x / qk;
+@@ -859,6 +861,8 @@ static __global__ void mul_mat_vec_q_moe(
+         iq3xxs_grid_smem_init(tid, blockDim.x * blockDim.y);
+     } else if constexpr (type == GGML_TYPE_IQ2_XS) {
+         iq2xs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ2_S) {
++        iq2s_grid_smem_init(tid, blockDim.x * blockDim.y);
+     }
+     const int      row0        = c_rows_per_block*blockIdx.x;
+     const int      blocks_per_row_x = ncols_x / qk;
+diff --git a/ggml/src/ggml-cuda/vecdotq.cuh b/ggml/src/ggml-cuda/vecdotq.cuh
+index 6a32145..dbdbdba 100644
+--- a/ggml/src/ggml-cuda/vecdotq.cuh
++++ b/ggml/src/ggml-cuda/vecdotq.cuh
+@@ -1073,11 +1073,23 @@ static __device__ __forceinline__ float vec_dot_iq2_xxs_q8_1(
+     return d * sumi;
+ }
+ 
++__device__ __constant__ static const uint32_t k_sign_mask_lut[16] = {
++    0x00000000u, 0x000000FFu, 0x0000FF00u, 0x0000FFFFu,
++    0x00FF0000u, 0x00FF00FFu, 0x00FFFF00u, 0x00FFFFFFu,
++    0xFF000000u, 0xFF0000FFu, 0xFF00FF00u, 0xFF00FFFFu,
++    0xFFFF0000u, 0xFFFF00FFu, 0xFFFFFF00u, 0xFFFFFFFFu,
++};
++
++static __device__ __forceinline__ uint8_t unpack_ksigns_byte(const uint8_t v) {
++    const uint32_t p = __popc(v) & 1;
++    return v ^ (p << 7);
++}
++
+ #define VDR_IQ2_XS_Q8_1_MMVQ 2
+ #define VDR_IQ2_XS_Q8_1_MMQ  2
+ 
+ static __device__ __forceinline__ uint2 * iq2xs_grid_smem() {
+-    __shared__ uint2 s_grid[512];
++    __shared__ uint2 s_grid[512 + 8];
+     return s_grid;
+ }
+ 
+@@ -1087,6 +1099,10 @@ static __device__ __forceinline__ void iq2xs_grid_smem_init(const int tid, const
+     for (int i = tid; i < 512; i += nthreads) {
+         s_grid[i] = src[i];
+     }
++    uint32_t * s_signs = (uint32_t *) (s_grid + 512);
++    if (tid < 16) {
++        s_signs[tid] = k_sign_mask_lut[tid];
++    }
+     __syncthreads();
+ }
+ 
+@@ -1100,19 +1116,21 @@ static __device__ __forceinline__ float vec_dot_iq2_xs_q8_1(
+     const int ls0 = bq2->scales[iqs/2] & 0x0F;
+     const int ls1 = bq2->scales[iqs/2] >> 4;
+ 
++    const uint2 * s_grid = iq2xs_grid_smem();
++    const uint32_t * s_sign_mask = (const uint32_t *) (s_grid + 512);
++
+     int sumi0 = 0;
+     int sumi1 = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const uint2 * s_grid = iq2xs_grid_smem();
+         const uint2 grid_pos = s_grid[q2[l0/2] & 0x1FF];
+-        const uint32_t signs = unpack_ksigns(q2[l0/2] >> 9);
++        const uint8_t s = unpack_ksigns_byte(q2[l0/2] >> 9);
+ 
+-        const int signs0 = __vcmpne4(signs & 0x08040201, 0);
++        const int signs0 = s_sign_mask[s & 0x0F];
+         const int grid_l = __vsub4(grid_pos.x ^ signs0, signs0);
+         const int u0 = get_int_b4(bq8_1[iqs/2].qs, l0 + 0);
+ 
+-        const int signs1 = __vcmpne4(signs & 0x80402010, 0);
++        const int signs1 = s_sign_mask[s >> 4];
+         const int grid_h = __vsub4(grid_pos.y ^ signs1, signs1);
+         const int u1 = get_int_b4(bq8_1[iqs/2].qs, l0 + 1);
+ 
+@@ -1132,6 +1150,23 @@ static __device__ __forceinline__ float vec_dot_iq2_xs_q8_1(
+ #define VDR_IQ2_S_Q8_1_MMVQ 2
+ #define VDR_IQ2_S_Q8_1_MMQ  2
+ 
++static __device__ __forceinline__ uint64_t * iq2s_grid_smem() {
++    __shared__ uint64_t s_grid[1024 + 8];
++    return s_grid;
++}
++
++static __device__ __forceinline__ void iq2s_grid_smem_init(const int tid, const int nthreads) {
++    uint64_t * s_grid = iq2s_grid_smem();
++    for (int i = tid; i < 1024; i += nthreads) {
++        s_grid[i] = iq2s_grid[i];
++    }
++    uint32_t * s_signs = (uint32_t *) (s_grid + 1024);
++    if (tid < 16) {
++        s_signs[tid] = k_sign_mask_lut[tid];
++    }
++    __syncthreads();
++}
++
+ static __device__ __forceinline__ float vec_dot_iq2_s_q8_1(
+     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+ 
+@@ -1148,14 +1183,18 @@ static __device__ __forceinline__ float vec_dot_iq2_s_q8_1(
+     const int ls0 = bq2->scales[iqs/2] & 0x0F;
+     const int ls1 = bq2->scales[iqs/2] >> 4;
+ 
++    const uint64_t * s_grid = iq2s_grid_smem();
++    const uint32_t * s_sign_mask = (const uint32_t *) (s_grid + 1024);
++
+     int sumi0 = 0;
+     int sumi1 = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const int * grid_pos = (const int *)(iq2s_grid + (qs[l0/2] | ((qh << (8-l0)) & 0x300)));
++        const int * grid_pos = (const int *)(s_grid + (qs[l0/2] | ((qh << (8-l0)) & 0x300)));
+ 
+-        const int signs0 = __vcmpne4(((signs_packed_8[l0/2] & 0x03) << 7) | ((signs_packed_8[l0/2] & 0x0C) << 21), 0x00000000);
+-        const int signs1 = __vcmpne4(((signs_packed_8[l0/2] & 0x30) << 3) | ((signs_packed_8[l0/2] & 0xC0) << 17), 0x00000000);
++        const int s_byte = signs_packed_8[l0/2];
++        const int signs0 = s_sign_mask[s_byte & 0x0F];
++        const int signs1 = s_sign_mask[s_byte >> 4];
+ 
+         const int grid_l = __vsub4(grid_pos[0] ^ signs0, signs0);
+         const int grid_h = __vsub4(grid_pos[1] ^ signs1, signs1);
+@@ -1181,7 +1220,7 @@ static __device__ __forceinline__ float vec_dot_iq2_s_q8_1(
+ #define VDR_IQ3_XXS_Q8_1_MMQ  2
+ 
+ static __device__ __forceinline__ uint32_t * iq3xxs_grid_smem() {
+-    __shared__ uint32_t s_grid[256];
++    __shared__ uint32_t s_grid[256 + 16];
+     return s_grid;
+ }
+ 
+@@ -1190,6 +1229,9 @@ static __device__ __forceinline__ void iq3xxs_grid_smem_init(const int tid, cons
+     for (int i = tid; i < 256; i += nthreads) {
+         s_grid[i] = iq3xxs_grid[i];
+     }
++    if (tid < 16) {
++        s_grid[256 + tid] = k_sign_mask_lut[tid];
++    }
+     __syncthreads();
+ }
+ 
+@@ -1202,19 +1244,21 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
+     const uint8_t * q3 = (const uint8_t *) &q3_packed;
+     const uint32_t aux32 = get_int_b2(bq3->qs, QK_K/16 + iqs/2);
+ 
++    const uint32_t * s_grid = iq3xxs_grid_smem();
++    const uint32_t * s_sign_mask = s_grid + 256;
++
+     int sumi = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const uint32_t * s_grid = iq3xxs_grid_smem();
+         const int2 grid_pos = make_int2(s_grid[q3[l0 + 0]], s_grid[q3[l0 + 1]]);
+-        const uint32_t signs = unpack_ksigns(aux32 >> (7*l0/2));
++        const uint8_t s = unpack_ksigns_byte(aux32 >> (7*l0/2));
+ 
+-        const int signs0 = __vcmpne4(signs & 0x08040201, 0);
++        const int signs0 = s_sign_mask[s & 0x0F];
+         const int grid_l = __vsub4(grid_pos.x ^ signs0, signs0);
+ 
+         const int u0 = get_int_b4(bq8_1[iqs/2].qs, l0 + 0);
+ 
+-        const int signs1 = __vcmpne4(signs & 0x80402010, 0);
++        const int signs1 = s_sign_mask[s >> 4];
+         const int grid_h = __vsub4(grid_pos.y ^ signs1, signs1);
+ 
+         const int u1 = get_int_b4(bq8_1[iqs/2].qs, l0 + 1);
+@@ -1233,7 +1277,7 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
+ #define VDR_IQ3_S_Q8_1_MMQ  2
+ 
+ static __device__ __forceinline__ uint32_t * iq3s_grid_smem() {
+-    __shared__ uint32_t s_grid[512];
++    __shared__ uint32_t s_grid[512 + 16];
+     return s_grid;
+ }
+ 
+@@ -1242,10 +1286,12 @@ static __device__ __forceinline__ void iq3s_grid_smem_init(const int tid, const
+     for (int i = tid; i < 512; i += nthreads) {
+         s_grid[i] = iq3s_grid[i];
+     }
++    if (tid < 16) {
++        s_grid[512 + tid] = k_sign_mask_lut[tid];
++    }
+     __syncthreads();
+ }
+ 
+-// TODO: don't use lookup table for signs
+ static __device__ __forceinline__ float vec_dot_iq3_s_q8_1(
+     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+ 
+@@ -1259,16 +1305,19 @@ static __device__ __forceinline__ float vec_dot_iq3_s_q8_1(
+     const int       signs_packed_32 = get_int_b2(bq3->signs, iqs/2);
+     const uint8_t * signs_packed_8  = (const uint8_t *) &signs_packed_32;
+ 
++    const uint32_t * s_grid = iq3s_grid_smem();
++    const uint32_t * s_sign_mask = s_grid + 512;
++
+     int sumi = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const uint32_t * s_grid = iq3s_grid_smem();
+         const int2 grid_pos = make_int2(
+             s_grid[qs[l0 + 0] | ((qh << (8 - l0)) & 0x100)],
+             s_grid[qs[l0 + 1] | ((qh << (7 - l0)) & 0x100)]);
+ 
+-        const int signs0 = __vcmpne4(((signs_packed_8[l0/2] & 0x03) << 7) | ((signs_packed_8[l0/2] & 0x0C) << 21), 0x00000000);
+-        const int signs1 = __vcmpne4(((signs_packed_8[l0/2] & 0x30) << 3) | ((signs_packed_8[l0/2] & 0xC0) << 17), 0x00000000);
++        const int s_byte = signs_packed_8[l0/2];
++        const int signs0 = s_sign_mask[s_byte & 0x0F];
++        const int signs1 = s_sign_mask[s_byte >> 4];
+ 
+         const int grid_l = __vsub4(grid_pos.x ^ signs0, signs0);
+         const int grid_h = __vsub4(grid_pos.y ^ signs1, signs1);
+-- 
+2.47.3
+

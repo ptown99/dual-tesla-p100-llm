@@ -1,0 +1,59 @@
+From 61571f9131fc8a229cf11cb48900c00e6fce7c31 Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 8 Nov 2026 18:12:23 +0000
+Subject: [PATCH 44/45] fix(cuda): correct Q4_K scale math in
+ gp100_mmvq_glu_q4k_iq4xs and re-enable hetero fusion
+
+---
+ ggml/src/ggml-cuda/mmvq-gp100-hetero.inc | 20 +++++++-------------
+ 1 file changed, 7 insertions(+), 13 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/mmvq-gp100-hetero.inc b/ggml/src/ggml-cuda/mmvq-gp100-hetero.inc
+index 31cae2a..11c0065 100644
+--- a/ggml/src/ggml-cuda/mmvq-gp100-hetero.inc
++++ b/ggml/src/ggml-cuda/mmvq-gp100-hetero.inc
+@@ -5,6 +5,7 @@
+ bool ggml_cuda_gp100_mmvq_hetero_fusable(const ggml_type up, const ggml_type gate) {
+     if (up == GGML_TYPE_IQ4_XS && gate == GGML_TYPE_IQ3_S) return true;
+     if (up == GGML_TYPE_IQ3_S && gate == GGML_TYPE_IQ4_XS) return true;
++    if (up == GGML_TYPE_Q4_K && gate == GGML_TYPE_IQ4_XS) return true;
+     if (up == GGML_TYPE_IQ3_S && gate == GGML_TYPE_IQ3_XXS) return true;
+     return false;
+ }
+@@ -317,6 +318,7 @@ static __global__ void __launch_bounds__(128) gp100_mmvq_glu_q4k_iq4xs(
+     const int t  = lane % 8;
+     const int jj = t / 2;
+     const int hf = t % 2;
++    const int bsel = 2 * (jj & 1);
+ 
+     const uint4 * base_up[R];
+     const uint2 * base_gate[R];
+@@ -380,20 +382,12 @@ static __global__ void __launch_bounds__(128) gp100_mmvq_glu_q4k_iq4xs(
+             const uint32_t C = hd_k[r].w;
+             const uint32_t scw = (A & mA) | ( C       & mC) | ((A >> 2) & mS);
+             const uint32_t mw  = ((B & mA) | ((C >> 4) & mC) | ((B >> 2) & mS)) & mH;
+-            const float sclo = (float) ((scw >> (8 * (jj & 1)))       & 0x3F);
+-            const float schi = (float) ((scw >> (8 * (jj & 1) + 16))  & 0x3F);
+-            const float mlo  = (float) ((mw  >> (8 * (jj & 1)))       & 0x3F);
+-            const float mhi  = (float) ((mw  >> (8 * (jj & 1) + 16))  & 0x3F);
++            const float2   dm  = __half22float2(*(const half2 *) &hd_k[r].x);
++            const float    sl  = __half2float(__hadd(__low2half(al), __high2half(al)));
++            const float    sh  = __half2float(__hadd(__low2half(ah), __high2half(ah)));
+ 
+-            const float d    = __half2float(__ushort_as_half((unsigned short) (hd_k[r].x & 0xFFFF)));
+-            const float dmin = __half2float(__ushort_as_half((unsigned short) (hd_k[r].x >> 16)));
+-
+-            const float sl = __half2float(__hadd(__low2half(al), __high2half(al)));
+-            const float sh = __half2float(__hadd(__low2half(ah), __high2half(ah)));
+-
+-            sum_up[r] += d * (sclo * fmaf(sl, sc4.x, -mlo * sc4.y) +
+-                              schi * fmaf(sh, sc4.z, -mhi * sc4.w))
+-                         - dmin * (mlo * sc4.y + mhi * sc4.w);
++            sum_up[r] += dm.x * fmaf(gp100_byte_f(scw, bsel) * sc4.x, sl, gp100_byte_f(scw, bsel + 1) * sc4.z * sh)
++                       - dm.y * fmaf(gp100_byte_f(mw,  bsel),  sc4.y,     gp100_byte_f(mw,  bsel + 1) * sc4.w);
+         }
+ 
+         // Gate (IQ4_XS)
+-- 
+2.47.3
+

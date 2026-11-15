@@ -1,0 +1,30 @@
+From 8a6154b2480088f1d796bf183f751ef5e1bca2bc Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 8 Nov 2026 06:24:58 +0000
+Subject: [PATCH 40/45] perf(cuda): use 4 rows per block for IQ quants on GP100
+ in mmvq
+
+---
+ ggml/src/ggml-cuda/mmvq.cu | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 10a6a6c..24a83dd 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -566,6 +566,12 @@ static constexpr __host__ __device__ int calc_rows_per_block(ggml_type type, int
+             case GGML_TYPE_Q4_K:
+             case GGML_TYPE_Q5_K:
+             case GGML_TYPE_Q6_K:
++            case GGML_TYPE_IQ4_XS:
++            case GGML_TYPE_IQ4_NL:
++            case GGML_TYPE_IQ3_S:
++            case GGML_TYPE_IQ3_XXS:
++            case GGML_TYPE_IQ2_XS:
++            case GGML_TYPE_IQ2_S:
+                 return GGML_CUDA_MMVQ_ROWS_PASCAL_K;
+             default:
+                 return GGML_CUDA_MMVQ_ROWS_PASCAL;
+-- 
+2.47.3
+

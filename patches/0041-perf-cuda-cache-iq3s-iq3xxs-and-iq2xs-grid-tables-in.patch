@@ -1,0 +1,145 @@
+From 97e4ac8bc33bd2c699f29ce06820be0412cea9de Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 8 Nov 2026 06:49:57 +0000
+Subject: [PATCH 41/45] perf(cuda): cache iq3s, iq3xxs, and iq2xs grid tables
+ in shared memory in mmvq
+
+---
+ ggml/src/ggml-cuda/mmvq.cu     | 15 ++++++++++
+ ggml/src/ggml-cuda/vecdotq.cuh | 51 +++++++++++++++++++++++++++++++---
+ 2 files changed, 62 insertions(+), 4 deletions(-)
+
+diff --git a/ggml/src/ggml-cuda/mmvq.cu b/ggml/src/ggml-cuda/mmvq.cu
+index 24a83dd..6d6b2fe 100644
+--- a/ggml/src/ggml-cuda/mmvq.cu
++++ b/ggml/src/ggml-cuda/mmvq.cu
+@@ -621,6 +621,13 @@ static __global__ void mul_mat_vec_q(
+     constexpr vec_dot_q_cuda_t vec_dot_q_cuda = get_vec_dot_q_cuda(type);
+ 
+     const     int tid = warp_size*threadIdx.y + threadIdx.x;
++    if constexpr (type == GGML_TYPE_IQ3_S) {
++        iq3s_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ3_XXS) {
++        iq3xxs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ2_XS) {
++        iq2xs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    }
+     const     int row0 = rows_per_cuda_block*blockIdx.x;
+     const     int blocks_per_row_x = ncols_x / qk;
+     constexpr int blocks_per_iter = vdr * nwarps*warp_size / qi;
+@@ -845,6 +852,14 @@ static __global__ void mul_mat_vec_q_moe(
+     constexpr vec_dot_q_cuda_t vec_dot_q_cuda = get_vec_dot_q_cuda(type);
+ 
+     const uint32_t token_idx   = threadIdx.y;
++    const int tid = warp_size*threadIdx.y + threadIdx.x;
++    if constexpr (type == GGML_TYPE_IQ3_S) {
++        iq3s_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ3_XXS) {
++        iq3xxs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    } else if constexpr (type == GGML_TYPE_IQ2_XS) {
++        iq2xs_grid_smem_init(tid, blockDim.x * blockDim.y);
++    }
+     const int      row0        = c_rows_per_block*blockIdx.x;
+     const int      blocks_per_row_x = ncols_x / qk;
+     constexpr int  blocks_per_iter  = vdr * warp_size / qi;
+diff --git a/ggml/src/ggml-cuda/vecdotq.cuh b/ggml/src/ggml-cuda/vecdotq.cuh
+index deccbdd..6a32145 100644
+--- a/ggml/src/ggml-cuda/vecdotq.cuh
++++ b/ggml/src/ggml-cuda/vecdotq.cuh
+@@ -1076,6 +1076,20 @@ static __device__ __forceinline__ float vec_dot_iq2_xxs_q8_1(
+ #define VDR_IQ2_XS_Q8_1_MMVQ 2
+ #define VDR_IQ2_XS_Q8_1_MMQ  2
+ 
++static __device__ __forceinline__ uint2 * iq2xs_grid_smem() {
++    __shared__ uint2 s_grid[512];
++    return s_grid;
++}
++
++static __device__ __forceinline__ void iq2xs_grid_smem_init(const int tid, const int nthreads) {
++    uint2 * s_grid = iq2xs_grid_smem();
++    const uint2 * src = (const uint2 *) iq2xs_grid;
++    for (int i = tid; i < 512; i += nthreads) {
++        s_grid[i] = src[i];
++    }
++    __syncthreads();
++}
++
+ static __device__ __forceinline__ float vec_dot_iq2_xs_q8_1(
+     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+ 
+@@ -1090,7 +1104,8 @@ static __device__ __forceinline__ float vec_dot_iq2_xs_q8_1(
+     int sumi1 = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const uint2 grid_pos = ((const uint2*)iq2xs_grid)[q2[l0/2] & 0x1FF];
++        const uint2 * s_grid = iq2xs_grid_smem();
++        const uint2 grid_pos = s_grid[q2[l0/2] & 0x1FF];
+         const uint32_t signs = unpack_ksigns(q2[l0/2] >> 9);
+ 
+         const int signs0 = __vcmpne4(signs & 0x08040201, 0);
+@@ -1165,6 +1180,19 @@ static __device__ __forceinline__ float vec_dot_iq2_s_q8_1(
+ #define VDR_IQ3_XXS_Q8_1_MMVQ 2
+ #define VDR_IQ3_XXS_Q8_1_MMQ  2
+ 
++static __device__ __forceinline__ uint32_t * iq3xxs_grid_smem() {
++    __shared__ uint32_t s_grid[256];
++    return s_grid;
++}
++
++static __device__ __forceinline__ void iq3xxs_grid_smem_init(const int tid, const int nthreads) {
++    uint32_t * s_grid = iq3xxs_grid_smem();
++    for (int i = tid; i < 256; i += nthreads) {
++        s_grid[i] = iq3xxs_grid[i];
++    }
++    __syncthreads();
++}
++
+ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
+     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+ 
+@@ -1177,7 +1205,8 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
+     int sumi = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
+-        const int2 grid_pos = make_int2(iq3xxs_grid[q3[l0 + 0]], iq3xxs_grid[q3[l0 + 1]]);
++        const uint32_t * s_grid = iq3xxs_grid_smem();
++        const int2 grid_pos = make_int2(s_grid[q3[l0 + 0]], s_grid[q3[l0 + 1]]);
+         const uint32_t signs = unpack_ksigns(aux32 >> (7*l0/2));
+ 
+         const int signs0 = __vcmpne4(signs & 0x08040201, 0);
+@@ -1203,6 +1232,19 @@ static __device__ __forceinline__ float vec_dot_iq3_xxs_q8_1(
+ #define VDR_IQ3_S_Q8_1_MMVQ 2
+ #define VDR_IQ3_S_Q8_1_MMQ  2
+ 
++static __device__ __forceinline__ uint32_t * iq3s_grid_smem() {
++    __shared__ uint32_t s_grid[512];
++    return s_grid;
++}
++
++static __device__ __forceinline__ void iq3s_grid_smem_init(const int tid, const int nthreads) {
++    uint32_t * s_grid = iq3s_grid_smem();
++    for (int i = tid; i < 512; i += nthreads) {
++        s_grid[i] = iq3s_grid[i];
++    }
++    __syncthreads();
++}
++
+ // TODO: don't use lookup table for signs
+ static __device__ __forceinline__ float vec_dot_iq3_s_q8_1(
+     const void * __restrict__ vbq, const block_q8_1 * __restrict__ bq8_1, const int & kbx, const int & iqs) {
+@@ -1220,9 +1262,10 @@ static __device__ __forceinline__ float vec_dot_iq3_s_q8_1(
+     int sumi = 0;
+ #pragma unroll
+     for (int l0 = 0; l0 < 8; l0 += 2) {
++        const uint32_t * s_grid = iq3s_grid_smem();
+         const int2 grid_pos = make_int2(
+-            iq3s_grid[qs[l0 + 0] | ((qh << (8 - l0)) & 0x100)],
+-            iq3s_grid[qs[l0 + 1] | ((qh << (7 - l0)) & 0x100)]);
++            s_grid[qs[l0 + 0] | ((qh << (8 - l0)) & 0x100)],
++            s_grid[qs[l0 + 1] | ((qh << (7 - l0)) & 0x100)]);
+ 
+         const int signs0 = __vcmpne4(((signs_packed_8[l0/2] & 0x03) << 7) | ((signs_packed_8[l0/2] & 0x0C) << 21), 0x00000000);
+         const int signs1 = __vcmpne4(((signs_packed_8[l0/2] & 0x30) << 3) | ((signs_packed_8[l0/2] & 0xC0) << 17), 0x00000000);
+-- 
+2.47.3
+
