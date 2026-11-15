@@ -25,10 +25,11 @@ ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   -c 215040 \
   -ctk q8_0 -ctv q8_0 \
   -b 32768 -ub 1024 -np 1 \
-  --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.12 \
+  --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.18 \
   -ngld 999 -ctkd q8_0 -ctvd q8_0 \
-  --jinja --temp 1.0 --top-k 20 --top-p 0.95 --min-p 0.0 \
+  --jinja --temp 0.0 --top-k 20 --top-p 1.0 --min-p 0.0 \
   --slots --slot-save-path /var/cache/llama-kv \
+  --cache-reuse 64 \
   --threads 4 --threads-batch 4 \
   --no-mmap \
   --cont-batching --no-warmup

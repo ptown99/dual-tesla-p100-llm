@@ -45,18 +45,21 @@ Fuses nodes `[60..66]` across all 64 transformer layers into a single persistent
 * **Cooperative Grid Synchronization:** Employs a single `cooperative_groups::grid_group::sync()` between Phase 1 (gate/up) and Phase 1.5 (down projection) with **zero CPU-GPU stream synchronization calls**, maintaining a full asynchronous GPU pipeline.
 * **GP100 Hardware MMU Safety:** Replaces `__ldg()` intrinsics with generic pointer dereferencing for shared memory activations, preventing GP100 hardware MMU illegal address faults (`cudaErrorIllegalAddress`) across both `Q4_K` and `IQ3_XXS` layers.
 
-### 2. Re-Tuned Speculative Decoding Dynamics (`--spec-draft-n-max 3`, `--spec-draft-p-min 0.12`)
-* Because the megakernel dropped base model decode time from 45.9 ms to 33.8 ms, the optimal speculative draft length shifted: generating low-confidence 4th and 5th draft tokens on the MTP head was slower than verifying.
-* Shortening `--spec-draft-n-max` from 4 to 3 and refining `--spec-draft-p-min` to 0.12 raised draft acceptance from **45.3% to 58.2%**, unlocking **46.13 tok/s** engine eval throughput.
+### 2. Stack A: Refined MTP 3-Draft Speculation (`--spec-draft-n-max 3`, `--spec-draft-p-min 0.18`)
+* Shortening `--spec-draft-n-max` from 4 to 3 and refining `--spec-draft-p-min` to 0.18 raised draft acceptance up to **84.3%** on reasoning tasks (and **90.0%** on 2-draft), unlocking **59.43 tok/s** peak engine eval throughput and **52.34 tok/s** sustained E2E throughput.
+* Enabled prefix and prompt cache reuse (`--cache-reuse 64`) for accelerated multi-turn tutoring.
 
-### 3. Physical CPU Core Pinning (`--threads-batch 4`)
+### 3. Full 56-SM Direct Dual-GPU P2P AllReduce Overlap
+* Scaled P2P AllReduce kernel dispatch from 28 blocks to **56 blocks**, saturating all 56 Streaming Multiprocessors across both GP100 GPUs during PCIe Gen3 posted writes and local HBM2 vector reductions (~9–11 µs latency).
+
+### 4. Physical CPU Core Pinning (`--threads-batch 4`)
 * On an Intel Xeon E5-2623 v3 (4 physical cores, 8 hyperthreads) pinned via `GOMP_CPU_AFFINITY=0,1,2,3`, setting `--threads-batch 4` matches physical core count and eliminates thread oversubscription context switching, adding an immediate **+1.8 tok/s**.
 
-### 4. 215k Mega-Context with High-Precision Q8_0 KV Cache
+### 5. 215k Mega-Context with High-Precision Q8_0 KV Cache
 * Employs `-c 215040` (215k context) with `-ctk q8_0 -ctv q8_0` for zero quantization loss in attention history.
-* Memory footprint: Consumes 12.9 GB per P100, leaving **3,469 MiB free VRAM headroom** per card alongside active RAG microservices (`llama-embed` and `llama-rerank`).
+* Memory footprint: Consumes 12.9 GB per P100, leaving **3,475 MiB free VRAM headroom** per card alongside active RAG microservices (`llama-embed` and `llama-rerank`).
 
-### 5. PCIe P2P & ACS Bypass (`tuning/`)
+### 6. PCIe P2P & ACS Bypass (`tuning/`)
 * Disables PCIe Access Control Services (ACS) on root bridge ports via `setpci`, unlocking direct GPU-to-GPU DMA transfers without host CPU bottlenecks.
 
 ---
@@ -80,14 +83,14 @@ Fuses nodes `[60..66]` across all 64 transformer layers into a single persistent
 * CUDA Toolkit 12.4 to 12.6 (CUDA 13 dropped `sm_60` support)
 * Host compiler: GCC <= 14
 
-### Automated Build (Applies all 45 sm_60 Patches)
+### Automated Build (Applies all 46 sm_60 Patches)
 
 ```bash
 git clone https://github.com/ptown99/dual-tesla-p100-llm.git
 cd dual-tesla-p100-llm
 chmod +x scripts/*.sh tuning/*.sh
 
-# Compile optimized llama.cpp with all 45 patches for sm_60
+# Compile optimized llama.cpp with all 46 patches for sm_60
 ./scripts/build.sh
 ```
 

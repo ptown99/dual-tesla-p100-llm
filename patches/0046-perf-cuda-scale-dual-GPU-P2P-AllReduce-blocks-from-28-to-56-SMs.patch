@@ -1,0 +1,26 @@
+From dcde44baeeee11f68fb79b63c381dafdefe945db Mon Sep 17 00:00:00 2001
+From: builder <builder@localhost>
+Date: Sun, 15 Nov 2026 20:54:39 +0000
+Subject: [PATCH] perf(cuda): scale dual-GPU P2P AllReduce blocks from 28 to
+ full GP100 56 SM capacity
+
+---
+ ggml/src/ggml-cuda/allreduce-p2p.cuh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/ggml/src/ggml-cuda/allreduce-p2p.cuh b/ggml/src/ggml-cuda/allreduce-p2p.cuh
+index 1a6a6d9..6c1a7af 100644
+--- a/ggml/src/ggml-cuda/allreduce-p2p.cuh
++++ b/ggml/src/ggml-cuda/allreduce-p2p.cuh
+@@ -203,7 +203,7 @@ struct ggml_cuda_p2p_allreduce {
+         call_count++;
+ 
+         const int block_size = 128;
+-        const int n_blocks = (int) std::min<int64_t>(28, (ne + block_size * 4 - 1) / (block_size * 4));
++        const int n_blocks = (int) std::min<int64_t>(56, (ne + block_size * 4 - 1) / (block_size * 4));
+ 
+         // 1. Dev 0: wait slot reuse, push into Dev 1's scratch, signal push
+         cudaSetDevice(dev_ids[0]);
+-- 
+2.47.3
+

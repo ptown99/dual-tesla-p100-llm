@@ -3,7 +3,7 @@
     "title": "Dual Tesla P100 LLM Master Benchmark Registry",
     "description": "Historical, cached, and validated benchmark results across all optimization milestones, kernels, models, and parameter sweeps on Dual Tesla P100 sm_60.",
     "created_at": "2026-11-14T20:10:00Z",
-    "last_updated": "2026-11-15T01:10:52.110664Z",
+    "last_updated": "2026-11-15T20:54:22.889755+00:00",
     "node": "mimi@192.168.1.67",
     "hardware": {
       "gpus": [
@@ -567,6 +567,101 @@
         "optimized_wall_s": 3.52,
         "speedup": "3.80x compound wall-clock speedup"
       }
-    ]
+    ],
+    "stack_a_56sm_mtp3_deployed": {
+      "timestamp": "2026-11-15T20:54:22.889755+00:00",
+      "model": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "service": "llama-qwen38-27b-fast.service",
+      "commit": "bfe6bc1-dirty (56-SM AllReduce)",
+      "optimizations": [
+        "P5 Option A Persistent Cooperative Megakernel (nodes 60..66 fused)",
+        "56 SM Dual-GPU P2P AllReduce (scaled from 28 to full GP100 SM capacity)",
+        "MTP 3-Draft Speculation Refinement (p_min = 0.18, AVX2 greedy argmax bypass)",
+        "Prefix & Prompt Cache-Reuse (chunk size 64)",
+        "Physical CPU affinity (threads-batch 4)",
+        "PCIe P2P ACS bypass"
+      ],
+      "parameters": {
+        "split_mode": "tensor",
+        "ngl": 999,
+        "context_window": 215040,
+        "ctk": "q8_0",
+        "ctv": "q8_0",
+        "b": 32768,
+        "ub": 1024,
+        "spec_type": "draft-mtp",
+        "spec_draft_n_max": 3,
+        "spec_draft_p_min": 0.18,
+        "cache_reuse": 64,
+        "threads": 4,
+        "threads_batch": 4
+      },
+      "summary": {
+        "avg_e2e_tps": 35.37,
+        "avg_engine_eval_tps": 46.01,
+        "peak_engine_eval_tps": 59.43,
+        "peak_e2e_tps": 52.34,
+        "draft_acceptance_pct": 60.7,
+        "peak_draft_acceptance_pct": 84.3,
+        "physical_bus_throughput_gb_s": 377.77,
+        "bus_saturation_pct": 25.8,
+        "gpu_core_util_avg_pct": 81.4,
+        "gpu_core_util_peak_pct": 100.0,
+        "gpu1_free_vram_mb": 3477,
+        "gpu2_free_vram_mb": 3475,
+        "gpu1_avg_power_w": 137.4,
+        "gpu2_avg_power_w": 130.4
+      },
+      "prompts": [
+        {
+          "name": "Navier-Stokes momentum equation derivation",
+          "tokens": 128,
+          "elapsed_s": 3.69,
+          "e2e_tps": 34.66,
+          "engine_tps": 43.68,
+          "draft_acc_pct": 57.2
+        },
+        {
+          "name": "FEM Galerkin vs Petrov-Galerkin",
+          "tokens": 128,
+          "elapsed_s": 4.15,
+          "e2e_tps": 30.86,
+          "engine_tps": 41.37,
+          "draft_acc_pct": 52.0
+        },
+        {
+          "name": "Eigenvalues 3x3 symmetric stress tensor",
+          "tokens": 128,
+          "elapsed_s": 2.88,
+          "e2e_tps": 44.38,
+          "engine_tps": 54.68,
+          "draft_acc_pct": 75.2
+        },
+        {
+          "name": "Python SymPy 4th-order Runge-Kutta stiff ODE",
+          "tokens": 128,
+          "elapsed_s": 4.05,
+          "e2e_tps": 31.57,
+          "engine_tps": 41.55,
+          "draft_acc_pct": 52.4
+        },
+        {
+          "name": "Eigenvalues (Greedy Argmax / Pure Math)",
+          "tokens": 128,
+          "elapsed_s": 2.44,
+          "e2e_tps": 52.34,
+          "engine_tps": 59.43,
+          "draft_acc_pct": 84.3
+        },
+        {
+          "name": "Hilbert Matrix Determinant & Condition",
+          "tokens": 128,
+          "elapsed_s": 3.17,
+          "e2e_tps": 40.4,
+          "engine_tps": 59.16,
+          "draft_acc_pct": 84.3
+        }
+      ]
+    }
   }
 }
