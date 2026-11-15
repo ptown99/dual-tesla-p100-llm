@@ -1,0 +1,572 @@
+{
+  "metadata": {
+    "title": "Dual Tesla P100 LLM Master Benchmark Registry",
+    "description": "Historical, cached, and validated benchmark results across all optimization milestones, kernels, models, and parameter sweeps on Dual Tesla P100 sm_60.",
+    "created_at": "2026-11-14T20:10:00Z",
+    "last_updated": "2026-11-15T01:10:52.110664Z",
+    "node": "mimi@192.168.1.67",
+    "hardware": {
+      "gpus": [
+        {
+          "id": 0,
+          "model": "NVIDIA Quadro M2000 4GB",
+          "role": "Host display only",
+          "limit_w": 25,
+          "active_pwr_w": 11,
+          "compute_allocated": false
+        },
+        {
+          "id": 1,
+          "model": "NVIDIA Tesla P100-PCIE-16GB",
+          "arch": "Pascal sm_60",
+          "vram_mb": 16384,
+          "bus_bw_gb_s": 732,
+          "power_limit_w": 210
+        },
+        {
+          "id": 2,
+          "model": "NVIDIA Tesla P100-PCIE-16GB",
+          "arch": "Pascal sm_60",
+          "vram_mb": 16384,
+          "bus_bw_gb_s": 732,
+          "power_limit_w": 210
+        }
+      ],
+      "aggregate_hbm2_bw_gb_s": 1464,
+      "host_cpu": "Intel Xeon E5-2623 v3 (4 Cores, 8 Threads @ 3.00 GHz)",
+      "host_ram_gb": 64,
+      "os": "Debian 12 / Ubuntu Linux",
+      "cuda_version": "12.4",
+      "driver_version": "550.163.01"
+    }
+  },
+  "benchmarks": {
+    "p5_megakernel_champion_deployed": {
+      "timestamp": "2026-11-14T23:16:32Z",
+      "model": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "service": "llama-qwen38-27b-fast.service",
+      "commit": "bfe6bc1",
+      "optimizations": [
+        "P5 Option A Persistent Cooperative Megakernel (nodes 60..66 fused)",
+        "MTP 3-Draft Speculation (re-tuned from 4)",
+        "Physical CPU affinity (threads-batch 4)",
+        "PCIe P2P ACS bypass"
+      ],
+      "parameters": {
+        "split_mode": "tensor",
+        "ngl": 999,
+        "context_window": 215040,
+        "ctk": "q8_0",
+        "ctv": "q8_0",
+        "b": 32768,
+        "ub": 1024,
+        "spec_type": "draft-mtp",
+        "spec_draft_n_max": 3,
+        "spec_draft_p_min": 0.12,
+        "threads": 4,
+        "threads_batch": 4
+      },
+      "summary": {
+        "avg_e2e_tps": 31.81,
+        "avg_engine_eval_tps": 44.41,
+        "peak_engine_eval_tps": 50.26,
+        "draft_acceptance_pct": 58.2,
+        "physical_bus_throughput_gb_s": 368.64,
+        "bus_saturation_pct": 25.2,
+        "gpu_core_util_avg_pct": 79.8,
+        "gpu_core_util_peak_pct": 99.0,
+        "gpu1_free_vram_mb": 3469,
+        "gpu2_free_vram_mb": 3467,
+        "gpu1_avg_power_w": 135.5,
+        "gpu2_avg_power_w": 128.3
+      },
+      "prompts": [
+        {
+          "name": "Navier-Stokes momentum equation derivation",
+          "tokens": 128,
+          "elapsed_s": 3.73,
+          "e2e_tps": 34.28,
+          "engine_tps": 45.5,
+          "draft_acc_pct": 60.0
+        },
+        {
+          "name": "FEM Galerkin vs Petrov-Galerkin",
+          "tokens": 128,
+          "elapsed_s": 4.22,
+          "e2e_tps": 30.36,
+          "engine_tps": 42.48,
+          "draft_acc_pct": 52.0
+        },
+        {
+          "name": "Eigenvalues 3x3 symmetric stress tensor",
+          "tokens": 128,
+          "elapsed_s": 3.78,
+          "e2e_tps": 33.89,
+          "engine_tps": 50.26,
+          "draft_acc_pct": 68.0
+        },
+        {
+          "name": "Python SymPy 4th-order Runge-Kutta stiff ODE",
+          "tokens": 128,
+          "elapsed_s": 4.46,
+          "e2e_tps": 28.71,
+          "engine_tps": 39.39,
+          "draft_acc_pct": 45.6
+        }
+      ]
+    },
+    "megakernel_parameter_tuning_sweep_refined": [
+      {
+        "id": "MTP3_p0.12_ub1024_tb4",
+        "n_max": 3,
+        "p_min": 0.12,
+        "ub": 1024,
+        "tb": 4,
+        "avg_engine_tps": 46.13,
+        "avg_e2e_tps": 32.41,
+        "draft_acc_pct": 58.2,
+        "eigenvalues_engine_tps": 55.48,
+        "vram_free_mb": 3354
+      },
+      {
+        "id": "MTP3_p0.15_ub1024_tb4",
+        "n_max": 3,
+        "p_min": 0.15,
+        "ub": 1024,
+        "tb": 4,
+        "avg_engine_tps": 46.33,
+        "avg_e2e_tps": 32.37,
+        "draft_acc_pct": 58.0,
+        "eigenvalues_engine_tps": 57.64,
+        "vram_free_mb": 3354
+      },
+      {
+        "id": "MTP2_p0.10_ub1024_tb4",
+        "n_max": 2,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 4,
+        "avg_engine_tps": 45.09,
+        "avg_e2e_tps": 32.68,
+        "draft_acc_pct": 67.8,
+        "eigenvalues_engine_tps": 51.22,
+        "vram_free_mb": 3428
+      },
+      {
+        "id": "MTP3_p0.10_ub1024_tb4",
+        "n_max": 3,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 4,
+        "avg_engine_tps": 43.5,
+        "avg_e2e_tps": 31.39,
+        "draft_acc_pct": 54.2,
+        "eigenvalues_engine_tps": 49.14,
+        "vram_free_mb": 3354
+      }
+    ],
+    "megakernel_parameter_tuning_sweep_broad": [
+      {
+        "id": "MTP3_p0.10_ub1024_tb6",
+        "n_max": 3,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 43.17,
+        "avg_e2e_tps": 31.15,
+        "draft_acc_pct": 51.4,
+        "vram_free_mb": 3354
+      },
+      {
+        "id": "BestDraft_ub1024_tb4",
+        "n_max": 4,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 4,
+        "avg_engine_tps": 40.35,
+        "avg_e2e_tps": 29.74,
+        "draft_acc_pct": 49.4,
+        "vram_free_mb": 3278
+      },
+      {
+        "id": "Base_MTP4_p0.10_ub1024_tb6",
+        "n_max": 4,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 39.65,
+        "avg_e2e_tps": 29.36,
+        "draft_acc_pct": 45.3,
+        "vram_free_mb": 3278
+      },
+      {
+        "id": "MTP4_p0.05_ub1024_tb6",
+        "n_max": 4,
+        "p_min": 0.05,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 39.41,
+        "avg_e2e_tps": 29.21,
+        "draft_acc_pct": 44.6,
+        "vram_free_mb": 3278
+      },
+      {
+        "id": "MTP4_p0.15_ub1024_tb6",
+        "n_max": 4,
+        "p_min": 0.15,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 39.09,
+        "avg_e2e_tps": 29.03,
+        "draft_acc_pct": 46.1,
+        "vram_free_mb": 3278
+      },
+      {
+        "id": "BestDraft_ub2048_tb6",
+        "n_max": 4,
+        "p_min": 0.1,
+        "ub": 2048,
+        "tb": 6,
+        "avg_engine_tps": 38.73,
+        "avg_e2e_tps": 28.28,
+        "draft_acc_pct": 43.2,
+        "vram_free_mb": 2056
+      },
+      {
+        "id": "MTP5_p0.10_ub1024_tb6",
+        "n_max": 5,
+        "p_min": 0.1,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 36.75,
+        "avg_e2e_tps": 28.0,
+        "draft_acc_pct": 40.6,
+        "vram_free_mb": 3204
+      },
+      {
+        "id": "MTP5_p0.15_ub1024_tb6",
+        "n_max": 5,
+        "p_min": 0.15,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 36.69,
+        "avg_e2e_tps": 27.04,
+        "draft_acc_pct": 39.9,
+        "vram_free_mb": 3204
+      },
+      {
+        "id": "MTP5_p0.05_ub1024_tb6",
+        "n_max": 5,
+        "p_min": 0.05,
+        "ub": 1024,
+        "tb": 6,
+        "avg_engine_tps": 34.49,
+        "avg_e2e_tps": 26.06,
+        "draft_acc_pct": 37.4,
+        "vram_free_mb": 3204
+      }
+    ],
+    "p5_option_a_megakernel_raw_dense_decode": {
+      "timestamp": "2026-11-14T21:45:00Z",
+      "model": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "commit": "bfe6bc1",
+      "speculation": "none",
+      "baseline_dense_tps": 21.79,
+      "megakernel_dense_tps": 29.54,
+      "speedup_pct": 35.6,
+      "latency_ms_per_tok_baseline": 45.89,
+      "latency_ms_per_tok_megakernel": 33.85,
+      "kernel_launches_eliminated_per_token": 128
+    },
+    "initial_megakernel_fusion_milestone": {
+      "timestamp": "2026-11-12T18:00:00Z",
+      "model": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "commit": "6d97e9e",
+      "baseline_qr0n_tps": 32.29,
+      "optimized_megakernel_tps": 38.9,
+      "speedup_pct": 20.5,
+      "pp_speedup_128bit_vector": 1.53,
+      "status": "Target Exceeded (>= 38.75 tok/s)"
+    },
+    "head_to_head_27b_dense_vs_35b_moe": {
+      "timestamp": "2026-11-08T23:00:00Z",
+      "model_a_27b_dense": {
+        "model": "Qwen 3.8 27B Dense (384k YaRN)",
+        "quant": "UD-IQ4_XS (14.0 GB)",
+        "active_params_b": 27.32,
+        "gsm8k_accuracy_pct": 91.6,
+        "gsm8k_decode_tps": 37.49,
+        "humaneval_pass1_pct": 95.12,
+        "humaneval_decode_tps": 36.76,
+        "mmlu_accuracy_pct": 84.6,
+        "mmlu_tps": 9.68,
+        "niah_retrieval_pass_pct": 80.0,
+        "niah_prompt_tps": 144.4,
+        "vram_alloc_mb": 14579,
+        "vram_free_mb": 1805,
+        "power_draw_w": 195,
+        "temp_c": 79
+      },
+      "model_b_35b_moe": {
+        "model": "Qwen 3.8 35B MoE (256k Native)",
+        "quant": "A3B-Q4_K_M (21.0 GB)",
+        "active_params_b": 3.0,
+        "gsm8k_accuracy_pct": 94.0,
+        "gsm8k_decode_tps": 63.76,
+        "humaneval_pass1_pct": 91.46,
+        "humaneval_decode_tps": 60.88,
+        "mmlu_accuracy_pct": 84.6,
+        "mmlu_tps": 23.09,
+        "niah_retrieval_pass_pct": 100.0,
+        "niah_prompt_tps": 556.1,
+        "vram_alloc_mb": 12119,
+        "vram_free_mb": 4265,
+        "power_draw_w": 98,
+        "temp_c": 62
+      }
+    },
+    "curated_build_8_config_matrix": [
+      {
+        "split_mode": "tensor",
+        "kv": "f16",
+        "p": 512,
+        "n": 128,
+        "baseline_pp": 247.65,
+        "curated_pp": 248.4,
+        "baseline_tg": 32.01,
+        "curated_tg": 32.77,
+        "speedup_pct": 2.37
+      },
+      {
+        "split_mode": "tensor",
+        "kv": "f16",
+        "p": 2048,
+        "n": 128,
+        "baseline_pp": 247.18,
+        "curated_pp": 247.42,
+        "baseline_tg": 32.01,
+        "curated_tg": 32.75,
+        "speedup_pct": 2.31
+      },
+      {
+        "split_mode": "tensor",
+        "kv": "q4_0",
+        "p": 512,
+        "n": 128,
+        "baseline_pp": 246.08,
+        "curated_pp": 246.59,
+        "baseline_tg": 31.28,
+        "curated_tg": 32.2,
+        "speedup_pct": 2.94
+      },
+      {
+        "split_mode": "tensor",
+        "kv": "q4_0",
+        "p": 2048,
+        "n": 128,
+        "baseline_pp": 241.41,
+        "curated_pp": 242.18,
+        "baseline_tg": 31.29,
+        "curated_tg": 32.2,
+        "speedup_pct": 2.91
+      },
+      {
+        "split_mode": "layer",
+        "kv": "f16",
+        "p": 512,
+        "n": 128,
+        "baseline_pp": 147.36,
+        "curated_pp": 147.37,
+        "baseline_tg": 19.43,
+        "curated_tg": 19.99,
+        "speedup_pct": 2.88
+      },
+      {
+        "split_mode": "layer",
+        "kv": "f16",
+        "p": 2048,
+        "n": 128,
+        "baseline_pp": 195.05,
+        "curated_pp": 195.36,
+        "baseline_tg": 19.43,
+        "curated_tg": 19.99,
+        "speedup_pct": 2.88
+      },
+      {
+        "split_mode": "layer",
+        "kv": "q4_0",
+        "p": 512,
+        "n": 128,
+        "baseline_pp": 146.81,
+        "curated_pp": 147.58,
+        "baseline_tg": 19.13,
+        "curated_tg": 19.73,
+        "speedup_pct": 3.14
+      },
+      {
+        "split_mode": "layer",
+        "kv": "q4_0",
+        "p": 2048,
+        "n": 128,
+        "baseline_pp": 192.29,
+        "curated_pp": 192.09,
+        "baseline_tg": 19.12,
+        "curated_tg": 19.72,
+        "speedup_pct": 3.14
+      }
+    ],
+    "kv_context_scaling_sweep": [
+      {
+        "context": 512,
+        "fp16_pp": 247.66,
+        "q4_pp": 247.36,
+        "fp16_tg": 32.77,
+        "q4_tg": 32.21,
+        "fp16_faster_pct": 1.75,
+        "fp16_vram_mb": 128,
+        "q4_vram_mb": 36
+      },
+      {
+        "context": 1024,
+        "fp16_pp": 240.88,
+        "q4_pp": 247.97,
+        "fp16_tg": 32.75,
+        "q4_tg": 32.19,
+        "fp16_faster_pct": 1.77,
+        "fp16_vram_mb": 256,
+        "q4_vram_mb": 73
+      },
+      {
+        "context": 2048,
+        "fp16_pp": 247.75,
+        "q4_pp": 242.27,
+        "fp16_tg": 32.77,
+        "q4_tg": 32.2,
+        "fp16_faster_pct": 1.76,
+        "fp16_vram_mb": 512,
+        "q4_vram_mb": 146
+      },
+      {
+        "context": 4096,
+        "fp16_pp": 245.17,
+        "q4_pp": 234.53,
+        "fp16_tg": 32.73,
+        "q4_tg": 32.19,
+        "fp16_faster_pct": 1.7,
+        "fp16_vram_mb": 1024,
+        "q4_vram_mb": 292
+      },
+      {
+        "context": 8192,
+        "fp16_pp": 244.91,
+        "q4_pp": 235.24,
+        "fp16_tg": 32.74,
+        "q4_tg": 32.19,
+        "fp16_faster_pct": 1.74,
+        "fp16_vram_mb": 2048,
+        "q4_vram_mb": 585
+      },
+      {
+        "context": 16384,
+        "fp16_pp": 239.29,
+        "q4_pp": 237.2,
+        "fp16_tg": 32.68,
+        "q4_tg": 32.16,
+        "fp16_faster_pct": 1.61,
+        "fp16_vram_mb": 4096,
+        "q4_vram_mb": 1170
+      }
+    ],
+    "fast_fp16_architectures": [
+      {
+        "approach": "Baseline Pure qr0n",
+        "commit": "0ccd9f2",
+        "ppl": "1.0014 \u00b1 0.0002",
+        "pp512": 238.41,
+        "pp2048": 218.15,
+        "tg128_f16": 31.78,
+        "tg128_q4": 31.25
+      },
+      {
+        "approach": "Approach 1: Mixed-Precision Storage",
+        "commit": "1c06698",
+        "ppl": "1.0014 \u00b1 0.00023",
+        "pp512": 250.84,
+        "pp2048": 232.28,
+        "tg128_f16": 32.46,
+        "tg128_q4": 31.95
+      },
+      {
+        "approach": "Approach 2: Symmetric Scale",
+        "commit": "ebcb2ea",
+        "ppl": "1.0014 \u00b1 0.00025",
+        "pp512": 251.37,
+        "pp2048": 231.57,
+        "tg128_f16": 32.39,
+        "tg128_q4": 31.82
+      },
+      {
+        "approach": "Approach 3: Tile-Max Pre-subtraction",
+        "commit": "e6afd09",
+        "ppl": "1.0014 \u00b1 0.00022",
+        "pp512": 251.07,
+        "pp2048": 231.53,
+        "tg128_f16": 32.43,
+        "tg128_q4": 31.82
+      },
+      {
+        "approach": "Approach 4: Block-Exponent Balancing",
+        "commit": "f2b03ab",
+        "ppl": "1.0015 \u00b1 0.00024",
+        "pp512": 250.69,
+        "pp2048": 231.53,
+        "tg128_f16": 32.4,
+        "tg128_q4": 31.83
+      }
+    ],
+    "lossless_compound_speedup_battery": [
+      {
+        "technique": "Prompt Lookup (PLD / N-Gram)",
+        "config": "ngram-simple (N=3, M=4)",
+        "baseline_wall_s": 27.32,
+        "optimized_wall_s": 10.59,
+        "speedup": "2.58x faster on code editing"
+      },
+      {
+        "technique": "Quantized KV Cache",
+        "config": "q4_0 KV in tensor mode",
+        "baseline_context": "128k cap",
+        "optimized_context": "262k cap",
+        "impact": "-75% KV VRAM, 246.5 t/s prompt"
+      },
+      {
+        "technique": "Tuned MTP Speculation",
+        "config": "draft_n=2, p_min=0.10 (pre-megakernel)",
+        "baseline_tps": 37.9,
+        "optimized_tps": 48.29,
+        "speedup": "+29.4% peak decode"
+      },
+      {
+        "technique": "Prefix & Prompt Caching",
+        "config": "--cache-prompt --cache-reuse 64",
+        "baseline_ttft_ms": 9970,
+        "optimized_ttft_ms": 856,
+        "impact": "-91.4% TTFT latency (3.8x wall)"
+      },
+      {
+        "technique": "P2P AllReduce Stream Overlap",
+        "config": "cudaStreamNonBlocking dual streams",
+        "baseline_sync_ms": 1.47,
+        "optimized_sync_ms": 0.01,
+        "impact": "P2P latency hidden behind GEMV"
+      },
+      {
+        "technique": "Compound Production Stack",
+        "config": "All techniques unified",
+        "baseline_wall_s": 13.4,
+        "optimized_wall_s": 3.52,
+        "speedup": "3.80x compound wall-clock speedup"
+      }
+    ]
+  }
+}
