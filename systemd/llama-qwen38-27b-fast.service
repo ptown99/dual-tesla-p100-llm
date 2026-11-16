@@ -31,6 +31,8 @@ ExecStart=/opt/p100-llama-cpp/llama.cpp/build/bin/llama-server \
   --threads 2 --threads-batch 4 \
   --prio 2 --prio-batch 2 --prio-draft 2 \
   --poll 100 --poll-batch 1 --poll-draft 1 \
+  --cache-ram 0 \
+  --no-cache-idle-slots \
   --cont-batching
 Restart=on-failure
 RestartSec=3
