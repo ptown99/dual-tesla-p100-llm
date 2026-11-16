@@ -262,18 +262,18 @@ MODELS = {
 
     "mae-engineering-tutor": {
         "service": "llama-qwen38-27b-fast.service",
-        "name": "Qwen 3.8 27B STEM Tutor [P5 Megakernel / Q8_0 KV] (Dual P100 - 215k Context - 46 t/s)",
-        "description": "Qwen 3.8 27B accelerated with P5 Option A Persistent Cooperative Megakernel (nodes 60..66 fused across 56 SMs), Q8_0 KV cache, and MTP 3-draft speculation (215k context, 46.1 tok/s engine eval, 32.4 tok/s sustained E2E, 3.5GB free VRAM with RAG).",
+        "name": "Qwen 3.8 27B STEM Tutor [P5 Megakernel / Q8_0 KV] (Dual P100 - 256k Context - 59 t/s)",
+        "description": "Qwen 3.8 27B accelerated with P5 Option A Persistent Cooperative Megakernel (nodes 60..66 fused across 56 SMs), Q8_0 KV cache, and MTP 3-draft speculation (256k context, 58.6 tok/s engine eval, 3.16GB free VRAM cushion).",
         "categories": ["tutor"],
         "tags": [
             {"text": "P5 Megakernel", "type": "perf"},
-            {"text": "46.1 t/s", "type": "speed"},
+            {"text": "58.6 t/s", "type": "speed"},
             {"text": "Q8_0 KV", "type": "perf"},
-            {"text": "215k", "type": "ctx"},
+            {"text": "256k", "type": "ctx"},
             {"text": "MTP 3-Draft", "type": "engine"}
         ],
         "aliases": ["qwen3.8-native", "qwen3.8", "qwen-3.8-27b", "mae-qwen38-tutor", "qwen", "qwen3.8:27b", "qwen3.8-megakernel", "qwen-megakernel", "megakernel", "qwen27b-megakernel", "mae-megakernel"],
-        "context_tokens": 215040,
+        "context_tokens": 262144,
         "port": 8002
     },
 
